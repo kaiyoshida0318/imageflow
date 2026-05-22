@@ -2064,3 +2064,74 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 @media (max-width: 720px) {
   .sec-dropzone { width: 100px; height: 100px; }
 }
+
+/* ========== ImageFlow v2.5: 項目の追加/削除 ========== */
+/* 項目ごとの×(項目削除) */
+.sec-remove-item {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  margin-left: 4px;
+}
+.sec-remove-item:hover { background: var(--danger); color: #fff; }
+
+/* +項目を追加エリア */
+.sec-add-item-area {
+  margin-top: 8px;
+  position: relative;
+}
+.sec-add-item-btn {
+  width: 100%;
+  padding: 14px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-family: var(--sans);
+  transition: all 0.15s;
+}
+.sec-add-item-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-add-item-menu {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  box-shadow: 0 8px 24px -12px rgba(0,0,0,0.25);
+}
+.sec-add-item-option {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.sec-add-item-option:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.sec-add-item-empty {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+  padding: 8px;
+}
