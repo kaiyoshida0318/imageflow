@@ -508,7 +508,13 @@ function renderSections(p) {
           : `<div class="sec-question sec-question-empty" data-sec="${escapeHtml(def.key)}" title="クリックでこの商品の質問文を追加">＋ 質問文を追加</div>`}
       </div>`;
       })()}
-      <div class="sec-images">${imagesHtml || '<span class="sec-empty">画像なし</span>'}</div>
+      <div class="sec-images" data-sec="${escapeHtml(def.key)}">
+        ${imagesHtml}
+        <div class="sec-dropzone" data-sec="${escapeHtml(def.key)}">
+          <span class="sec-dropzone-icon">⇪</span>
+          <span class="sec-dropzone-text">ここに画像をドラッグ&ドロップ</span>
+        </div>
+      </div>
       <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
     </div>`;
   }).join("");
@@ -534,6 +540,26 @@ function renderSections(p) {
     input.addEventListener("change", (e) => {
       addSectionImages(input.dataset.sec, e.target.files);
       e.target.value = "";
+    });
+  });
+  // 画像ドロップゾーン(ドラッグ&ドロップで追加、クリックでもファイル選択)
+  wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
+    const key = dz.dataset.sec;
+    dz.addEventListener("click", () => {
+      const input = wrap.querySelector(`.sec-img-input[data-sec="${CSS.escape(key)}"]`);
+      if (input) input.click();
+    });
+    dz.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dz.classList.add("drag");
+    });
+    dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.classList.remove("drag");
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        addSectionImages(key, e.dataTransfer.files);
+      }
     });
   });
   // 画像削除
