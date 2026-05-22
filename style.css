@@ -1870,8 +1870,9 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* 商品ページ: セクションの質問文ガイド */
 .sec-question {
   font-size: 13px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
   padding: 10px 14px;
   border-radius: var(--radius);
   margin-bottom: 14px;
@@ -1888,7 +1889,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: background 0.15s;
 }
 .sec-question:hover {
-  background: #f0d9cc;
+  background: var(--bg-2);
 }
 .sec-question-edit {
   font-size: 11px;
