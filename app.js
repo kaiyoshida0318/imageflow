@@ -15,14 +15,15 @@ const DEFAULT_SECTIONS = [
   { key: "analysis", label: "分析" }
 ];
 
-// 商品の特定項目のデータ {texts, images} を取得(無ければ作る)
-function getSectionData(p, key) {
-  if (!p.sectionData) p.sectionData = {};
-  if (!p.sectionData[key]) p.sectionData[key] = { texts: [], images: [] };
-  const sd = p.sectionData[key];
-  if (!Array.isArray(sd.texts)) sd.texts = [];
-  if (!Array.isArray(sd.images)) sd.images = [];
-  return sd;
+// iid から sectionItem を取得
+function getItem(p, iid) {
+  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
+  const it = p.sectionItems.find((x) => x.iid === iid);
+  if (it) {
+    if (!Array.isArray(it.texts)) it.texts = [];
+    if (!Array.isArray(it.images)) it.images = [];
+  }
+  return it;
 }
 
 let auth = null;
@@ -103,25 +104,67 @@ async function loadData() {
   }
 }
 
-// 旧 product.sections [{key,label,texts,images}] を
-// 新 product.sectionData {key: {texts, images}} に移行
+// データ移行: 旧 sections[] / sectionData{} → 新 sectionItems[]
+// sectionItems: [{iid, key, texts:[], images:[], question?}] (順序保持・同じkey複数可)
 function migrateProducts() {
   products.forEach((p) => {
-    if (!p.sectionData) p.sectionData = {};
-    // 旧形式があれば取り込む
+    // さらに古い形式: p.sections[] → p.sectionData{}
     if (Array.isArray(p.sections)) {
+      if (!p.sectionData) p.sectionData = {};
       p.sections.forEach((s) => {
         if (!p.sectionData[s.key]) {
           p.sectionData[s.key] = { texts: s.texts || [], images: s.images || [] };
         }
-        // 定義に無いキーで中身があれば、定義にも追加(失わないため)
         if (((s.texts && s.texts.length) || (s.images && s.images.length)) &&
             !sectionDefs.some((d) => d.key === s.key)) {
           sectionDefs.push({ key: s.key, label: s.label || s.key });
         }
       });
-      delete p.sections; // 旧形式は破棄
+      delete p.sections;
     }
+    // 新形式 sectionItems が無ければ作る
+    if (!Array.isArray(p.sectionItems)) {
+      p.sectionItems = [];
+      // sectionData{} があれば、定義順に並べて移行
+      if (p.sectionData && typeof p.sectionData === "object") {
+        // まず定義順
+        sectionDefs.forEach((def) => {
+          const sd = p.sectionData[def.key];
+          if (sd) {
+            p.sectionItems.push({
+              iid: genId(), key: def.key,
+              texts: sd.texts || [], images: sd.images || [],
+              ...(sd.question !== undefined ? { question: sd.question } : {})
+            });
+          }
+        });
+        // 定義に無いキーも拾う
+        const defKeys = new Set(sectionDefs.map((d) => d.key));
+        Object.keys(p.sectionData).forEach((key) => {
+          if (!defKeys.has(key)) {
+            const sd = p.sectionData[key];
+            p.sectionItems.push({
+              iid: genId(), key,
+              texts: sd.texts || [], images: sd.images || [],
+              ...(sd.question !== undefined ? { question: sd.question } : {})
+            });
+          }
+        });
+      }
+      // それでも空なら、デフォルトで定義を一通り並べる(選択肢2の挙動)
+      if (p.sectionItems.length === 0) {
+        sectionDefs.forEach((def) => {
+          p.sectionItems.push({ iid: genId(), key: def.key, texts: [], images: [] });
+        });
+      }
+      delete p.sectionData; // 旧形式は破棄
+    }
+    // 各itemの配列を保証
+    p.sectionItems.forEach((it) => {
+      if (!Array.isArray(it.texts)) it.texts = [];
+      if (!Array.isArray(it.images)) it.images = [];
+      if (!it.iid) it.iid = genId();
+    });
   });
 }
 
@@ -284,17 +327,9 @@ async function verifyAuth(a) {
 function collectAllImages(p) {
   const imgs = [];
   if (p.image) imgs.push(p.image);
-  if (p.sectionData) {
-    for (const def of sectionDefs) {
-      const sd = p.sectionData[def.key];
-      if (sd && sd.images) imgs.push(...sd.images);
-    }
-    // 定義に無い項目の画像も拾う(念のため)
-    const defKeys = new Set(sectionDefs.map((d) => d.key));
-    for (const key of Object.keys(p.sectionData)) {
-      if (!defKeys.has(key) && p.sectionData[key].images) {
-        imgs.push(...p.sectionData[key].images);
-      }
+  if (Array.isArray(p.sectionItems)) {
+    for (const item of p.sectionItems) {
+      if (item.images) imgs.push(...item.images);
     }
   }
   return imgs;
@@ -469,48 +504,48 @@ function refreshCsvRow(p) {
 // ---------- セクション描画 ----------
 function renderSections(p) {
   const wrap = $("editor-sections");
-  if (!p.sectionData) p.sectionData = {};
-  wrap.innerHTML = sectionDefs.map((def) => {
-    const sec = getSectionData(p, def.key);
-    const imagesHtml = (sec.images || []).map((path, i) => `
+  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
+
+  const sectionsHtml = p.sectionItems.map((item) => {
+    const def = sectionDefs.find((d) => d.key === item.key);
+    const label = def ? def.label : (item.key || "項目");
+    const imagesHtml = (item.images || []).map((path, i) => `
       <div class="sec-img-item">
         <img data-load-path="${escapeHtml(path)}" alt="" />
-        <button class="sec-img-remove" data-sec="${escapeHtml(def.key)}" data-idx="${i}" title="削除">×</button>
+        <button class="sec-img-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="削除">×</button>
       </div>
     `).join("");
-    const textsHtml = (sec.texts || []).map((t, i) => `
+    const textsHtml = (item.texts || []).map((t, i) => `
       <div class="sec-text-item">
-        <textarea class="sec-text-area" data-sec="${escapeHtml(def.key)}" data-idx="${i}" rows="3" placeholder="テキストを入力…">${escapeHtml(t)}</textarea>
+        <textarea class="sec-text-area" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" rows="3" placeholder="テキストを入力…">${escapeHtml(t)}</textarea>
         <div class="sec-text-btns">
-          <button class="sec-text-expand" data-sec="${escapeHtml(def.key)}" data-idx="${i}" title="拡大/縮小">⤢</button>
-          <button class="sec-text-remove" data-sec="${escapeHtml(def.key)}" data-idx="${i}" title="このテキストを削除">×</button>
+          <button class="sec-text-expand" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="拡大/縮小">⤢</button>
+          <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>
     `).join("");
+    const effectiveQ = (item.question !== undefined && item.question !== null && item.question !== "")
+      ? item.question
+      : (def && def.question ? def.question : "");
     return `
-    <div class="editor-section" data-sec="${escapeHtml(def.key)}">
+    <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
       <div class="editor-section-head">
-        <h3 class="editor-section-title">${escapeHtml(def.label)}</h3>
+        <h3 class="editor-section-title">${escapeHtml(label)}</h3>
         <div class="editor-section-actions">
-          <button class="sec-add-text" data-sec="${escapeHtml(def.key)}">+ テキスト</button>
-          <button class="sec-add-img" data-sec="${escapeHtml(def.key)}">+ 画像</button>
-          <input type="file" class="sec-img-input" data-sec="${escapeHtml(def.key)}" accept="image/*" multiple hidden />
+          <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
+          <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像</button>
+          <input type="file" class="sec-img-input" data-iid="${escapeHtml(item.iid)}" accept="image/*" multiple hidden />
+          <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
         </div>
       </div>
-      ${(() => {
-        const effectiveQ = (sec.question !== undefined && sec.question !== null && sec.question !== "")
-          ? sec.question
-          : (def.question || "");
-        return `
-      <div class="sec-question-wrap" data-sec="${escapeHtml(def.key)}">
+      <div class="sec-question-wrap" data-iid="${escapeHtml(item.iid)}">
         ${effectiveQ
-          ? `<div class="sec-question" data-sec="${escapeHtml(def.key)}" title="クリックでこの商品の質問文を編集">💬 ${escapeHtml(effectiveQ)} <span class="sec-question-edit">✎</span></div>`
-          : `<div class="sec-question sec-question-empty" data-sec="${escapeHtml(def.key)}" title="クリックでこの商品の質問文を追加">＋ 質問文を追加</div>`}
-      </div>`;
-      })()}
-      <div class="sec-images" data-sec="${escapeHtml(def.key)}">
+          ? `<div class="sec-question" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の質問文を編集">💬 ${escapeHtml(effectiveQ)} <span class="sec-question-edit">✎</span></div>`
+          : `<div class="sec-question sec-question-empty" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の質問文を追加">＋ 質問文を追加</div>`}
+      </div>
+      <div class="sec-images" data-iid="${escapeHtml(item.iid)}">
         ${imagesHtml}
-        <div class="sec-dropzone" data-sec="${escapeHtml(def.key)}">
+        <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}">
           <span class="sec-dropzone-icon">⇪</span>
           <span class="sec-dropzone-text">ここに画像をドラッグ&ドロップ</span>
         </div>
@@ -519,84 +554,148 @@ function renderSections(p) {
     </div>`;
   }).join("");
 
+  // 末尾に「+ 項目を追加」エリア
+  const addAreaHtml = `
+    <div class="sec-add-item-area">
+      <button id="sec-add-item-btn" class="sec-add-item-btn">＋ 項目を追加</button>
+      <div id="sec-add-item-menu" class="sec-add-item-menu" style="display:none"></div>
+    </div>`;
+
+  wrap.innerHTML = sectionsHtml + addAreaHtml;
+
   // 画像読み込み
   wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
     loadImageInto(img, img.dataset.loadPath);
     img.addEventListener("click", () => openLightbox(img.src));
   });
-
   // テキスト追加
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
-    btn.addEventListener("click", () => addSectionText(btn.dataset.sec));
+    btn.addEventListener("click", () => addSectionText(btn.dataset.iid));
   });
-  // 画像追加(ファイル選択を開く)
+  // 画像追加(ファイル選択)
   wrap.querySelectorAll(".sec-add-img").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const input = wrap.querySelector(`.sec-img-input[data-sec="${CSS.escape(btn.dataset.sec)}"]`);
+      const input = wrap.querySelector(`.sec-img-input[data-iid="${CSS.escape(btn.dataset.iid)}"]`);
       if (input) input.click();
     });
   });
   wrap.querySelectorAll(".sec-img-input").forEach((input) => {
     input.addEventListener("change", (e) => {
-      addSectionImages(input.dataset.sec, e.target.files);
+      addSectionImages(input.dataset.iid, e.target.files);
       e.target.value = "";
     });
   });
-  // 画像ドロップゾーン(ドラッグ&ドロップで追加、クリックでもファイル選択)
+  // 画像ドロップゾーン
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
-    const key = dz.dataset.sec;
+    const iid = dz.dataset.iid;
     dz.addEventListener("click", () => {
-      const input = wrap.querySelector(`.sec-img-input[data-sec="${CSS.escape(key)}"]`);
+      const input = wrap.querySelector(`.sec-img-input[data-iid="${CSS.escape(iid)}"]`);
       if (input) input.click();
     });
-    dz.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      dz.classList.add("drag");
-    });
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
     dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
     dz.addEventListener("drop", (e) => {
       e.preventDefault();
       dz.classList.remove("drag");
       if (e.dataTransfer.files && e.dataTransfer.files.length) {
-        addSectionImages(key, e.dataTransfer.files);
+        addSectionImages(iid, e.dataTransfer.files);
       }
     });
   });
   // 画像削除
   wrap.querySelectorAll(".sec-img-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionImage(btn.dataset.sec, parseInt(btn.dataset.idx)));
+    btn.addEventListener("click", () => removeSectionImage(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
   // テキスト削除
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionText(btn.dataset.sec, parseInt(btn.dataset.idx)));
+    btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
-  // テキスト編集(フォーカスを外したら保存)
+  // テキスト編集(blurで保存)
   wrap.querySelectorAll(".sec-text-area").forEach((ta) => {
-    ta.addEventListener("blur", () => commitSectionText(ta.dataset.sec, parseInt(ta.dataset.idx), ta.value));
+    ta.addEventListener("blur", () => commitSectionText(ta.dataset.iid, parseInt(ta.dataset.idx), ta.value));
   });
-  // テキスト全画面エディタを開く
+  // テキスト全画面
   wrap.querySelectorAll(".sec-text-expand").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      openTextFullscreen(btn.dataset.sec, parseInt(btn.dataset.idx));
-    });
+    btn.addEventListener("click", () => openTextFullscreen(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
-  // 質問文クリックで編集(全商品に反映)
+  // 質問文クリックで編集
   wrap.querySelectorAll(".sec-question").forEach((el) => {
-    el.addEventListener("click", () => editSectionQuestionInline(el.dataset.sec));
+    el.addEventListener("click", () => editSectionQuestionInline(el.dataset.iid));
   });
+  // 項目ごと削除
+  wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
+    btn.addEventListener("click", () => removeSectionItem(btn.dataset.iid));
+  });
+  // +項目を追加
+  $("sec-add-item-btn").addEventListener("click", toggleAddItemMenu);
 }
 
-// 商品ページ上で質問文をインライン編集(この商品だけに保存)
-function editSectionQuestionInline(key) {
+// 「+項目を追加」メニューの開閉
+function toggleAddItemMenu() {
+  const menu = $("sec-add-item-menu");
+  if (menu.style.display === "block") { menu.style.display = "none"; return; }
+  if (sectionDefs.length === 0) {
+    menu.innerHTML = '<div class="sec-add-item-empty">項目管理から項目を追加してください</div>';
+  } else {
+    menu.innerHTML = sectionDefs.map((def) =>
+      `<button class="sec-add-item-option" data-key="${escapeHtml(def.key)}">${escapeHtml(def.label)}</button>`
+    ).join("");
+    menu.querySelectorAll(".sec-add-item-option").forEach((btn) => {
+      btn.addEventListener("click", () => addSectionItem(btn.dataset.key));
+    });
+  }
+  menu.style.display = "block";
+}
+
+// 項目を追加(同じkeyを複数回でもOK)
+async function addSectionItem(key) {
   const p = getCurrentProduct();
   if (!p) return;
-  const def = sectionDefs.find((d) => d.key === key);
-  const sec = getSectionData(p, key);
-  const wrap = document.querySelector(`.sec-question-wrap[data-sec="${CSS.escape(key)}"]`);
+  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
+  p.sectionItems.push({ iid: genId(), key, texts: [], images: [] });
+  try {
+    await saveData(`Add section item: ${p.name}`, mergeCurrentProduct(p));
+    renderSections(p);
+  } catch (err) {
+    alert("追加失敗: " + err.message);
+  }
+}
+
+// 項目ごと削除(その商品からこのインスタンスを消す)
+async function removeSectionItem(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const def = sectionDefs.find((d) => d.key === item.key);
+  const label = def ? def.label : "この項目";
+  const hasContent = (item.texts && item.texts.length) || (item.images && item.images.length);
+  if (!confirm(`「${label}」を削除しますか?${hasContent ? "\n中のテキスト・画像も削除されます。" : ""}`)) return;
+  try {
+    // 画像ファイルを削除
+    for (const path of (item.images || [])) {
+      try { await deleteFile(path, null, `Remove section item image: ${p.id}`); }
+      catch (e) { console.warn("画像削除失敗(続行):", e); }
+    }
+    p.sectionItems = p.sectionItems.filter((x) => x.iid !== iid);
+    await saveData(`Remove section item: ${p.name}`, mergeCurrentProduct(p));
+    renderSections(p);
+  } catch (err) {
+    alert("削除失敗: " + err.message);
+  }
+}
+
+// 商品ページ上で質問文をインライン編集(このitemだけに保存)
+function editSectionQuestionInline(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const def = sectionDefs.find((d) => d.key === item.key);
+  const wrap = document.querySelector(`.sec-question-wrap[data-iid="${CSS.escape(iid)}"]`);
   if (!wrap) return;
-  // 現在この商品で効いている質問文(個別 > デフォルト)
-  const currentQ = (sec.question !== undefined && sec.question !== null && sec.question !== "")
-    ? sec.question
+  const currentQ = (item.question !== undefined && item.question !== null && item.question !== "")
+    ? item.question
     : (def && def.question ? def.question : "");
   const placeholder = (def && def.question) ? `デフォルト: ${def.question}` : "例: この商品の強み・弱みは？";
   wrap.innerHTML = `
@@ -604,7 +703,7 @@ function editSectionQuestionInline(key) {
     <div class="sec-question-btns">
       <button class="sec-q-save">💾 保存(この商品のみ)</button>
       <button class="sec-q-cancel">キャンセル</button>
-      ${(sec.question !== undefined && sec.question !== null && sec.question !== "") ? '<button class="sec-q-reset">雛形に戻す</button>' : ''}
+      ${(item.question !== undefined && item.question !== null && item.question !== "") ? '<button class="sec-q-reset">雛形に戻す</button>' : ''}
     </div>
   `;
   const input = wrap.querySelector(".sec-question-input");
@@ -612,12 +711,8 @@ function editSectionQuestionInline(key) {
   const save = async (resetToDefault) => {
     const newQ = resetToDefault ? "" : input.value.trim();
     try {
-      if (resetToDefault || newQ === "") {
-        // 個別質問文を消す(デフォルト雛形に戻る)
-        delete sec.question;
-      } else {
-        sec.question = newQ;
-      }
+      if (resetToDefault || newQ === "") delete item.question;
+      else item.question = newQ;
       await saveData(`Edit product question: ${p.name}`, mergeCurrentProduct(p));
       renderSections(p);
     } catch (err) {
@@ -636,23 +731,21 @@ function getCurrentProduct() {
 }
 
 // ---------- 全画面テキストエディタ ----------
-let fsEditing = null; // { key, idx }
+let fsEditing = null; // { iid, idx }
 
-function openTextFullscreen(key, idx) {
-  const p = products.find((x) => x.id === currentDetailId);
+function openTextFullscreen(iid, idx) {
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec || sec.texts[idx] === undefined) return;
-  fsEditing = { key, idx };
-  // 項目名をタイトルに
-  const def = sectionDefs.find((d) => d.key === key);
+  const item = getItem(p, iid);
+  if (!item || item.texts[idx] === undefined) return;
+  fsEditing = { iid, idx };
+  const def = sectionDefs.find((d) => d.key === item.key);
   $("text-fullscreen-title").textContent = def ? def.label : "テキスト";
   const area = $("text-fullscreen-area");
-  area.value = sec.texts[idx];
+  area.value = item.texts[idx];
   $("text-fullscreen").style.display = "flex";
   setTimeout(() => {
     area.focus();
-    // カーソルとスクロールを先頭に戻す(文末に飛ばないように)
     area.setSelectionRange(0, 0);
     area.scrollTop = 0;
   }, 30);
@@ -660,16 +753,16 @@ function openTextFullscreen(key, idx) {
 
 async function closeTextFullscreen() {
   if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
-  const p = products.find((x) => x.id === currentDetailId);
-  const { key, idx } = fsEditing;
+  const p = getCurrentProduct();
+  const { iid, idx } = fsEditing;
   const newVal = $("text-fullscreen-area").value.trim();
   $("text-fullscreen").style.display = "none";
   fsEditing = null;
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec || sec.texts[idx] === undefined) return;
-  if (sec.texts[idx] === newVal) { renderSections(p); return; }
-  sec.texts[idx] = newVal;
+  const item = getItem(p, iid);
+  if (!item || item.texts[idx] === undefined) return;
+  if (item.texts[idx] === newVal) { renderSections(p); return; }
+  item.texts[idx] = newVal;
   try {
     await saveData(`Update text (fullscreen): ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
@@ -678,51 +771,51 @@ async function closeTextFullscreen() {
   renderSections(p);
 }
 
-function getSection(p, key) {
-  return getSectionData(p, key);
+function sectionLabelOf(item) {
+  const def = sectionDefs.find((d) => d.key === item.key);
+  return def ? def.label : (item.key || "項目");
 }
 
-// テキスト追加(空のテキストを足してすぐ編集できるように)
-async function addSectionText(key) {
-  const p = products.find((x) => x.id === currentDetailId);
+// テキスト追加
+async function addSectionText(iid) {
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec) return;
-  sec.texts.push("");
+  const item = getItem(p, iid);
+  if (!item) return;
+  item.texts.push("");
   renderSections(p);
-  // 追加したテキストエリアにフォーカス
   setTimeout(() => {
-    const areas = document.querySelectorAll(`.sec-text-area[data-sec="${CSS.escape(key)}"]`);
+    const areas = document.querySelectorAll(`.sec-text-area[data-iid="${CSS.escape(iid)}"]`);
     if (areas.length) areas[areas.length - 1].focus();
   }, 30);
 }
 
-// テキスト確定(blur時) - 内容が変わっていたら保存
-async function commitSectionText(key, idx, value) {
-  if (manualSaving) return; // 手動保存ボタン処理中は二重保存を避ける
-  const p = products.find((x) => x.id === currentDetailId);
+// テキスト確定(blur時)
+async function commitSectionText(iid, idx, value) {
+  if (manualSaving) return;
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec || sec.texts[idx] === undefined) return;
+  const item = getItem(p, iid);
+  if (!item || item.texts[idx] === undefined) return;
   const newVal = value.trim();
-  if (sec.texts[idx] === newVal) return; // 変化なし
-  sec.texts[idx] = newVal;
+  if (item.texts[idx] === newVal) return;
+  item.texts[idx] = newVal;
   try {
-    await saveData(`Update text in ${sec.label}: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Update text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
     alert("保存失敗: " + err.message);
   }
 }
 
-async function removeSectionText(key, idx) {
-  const p = products.find((x) => x.id === currentDetailId);
+async function removeSectionText(iid, idx) {
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec) return;
+  const item = getItem(p, iid);
+  if (!item) return;
   if (!confirm("このテキストを削除しますか?")) return;
-  sec.texts.splice(idx, 1);
+  item.texts.splice(idx, 1);
   try {
-    await saveData(`Remove text in ${sec.label}: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Remove text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
   } catch (err) {
     alert("削除失敗: " + err.message);
@@ -730,11 +823,11 @@ async function removeSectionText(key, idx) {
 }
 
 // 画像追加(複数可)
-async function addSectionImages(key, files) {
-  const p = products.find((x) => x.id === currentDetailId);
+async function addSectionImages(iid, files) {
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec) return;
+  const item = getItem(p, iid);
+  if (!item) return;
 
   const imgs = [...files].filter((f) => f.type.startsWith("image/"));
   if (imgs.length === 0) return;
@@ -750,11 +843,11 @@ async function addSectionImages(key, files) {
       setHeadStatus(`画像をアップロード中… (${i + 1}/${imgs.length})`);
       const base64 = await fileToBase64(file);
       const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      const path = `${IMAGES_DIR}/${p.id}-${key}-${Date.now()}-${i + 1}.${ext}`;
-      await uploadFile(path, base64, `Add image to ${sec.label}: ${p.id}`);
-      sec.images.push(path);
+      const path = `${IMAGES_DIR}/${p.id}-${item.iid}-${Date.now()}-${i + 1}.${ext}`;
+      await uploadFile(path, base64, `Add image to ${sectionLabelOf(item)}: ${p.id}`);
+      item.images.push(path);
     }
-    await saveData(`Add images to ${sec.label}: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Add images to ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
     setHeadStatus("✓ 追加しました", "ok");
     renderSections(p);
     setTimeout(() => setHeadStatus(""), 1200);
@@ -763,18 +856,18 @@ async function addSectionImages(key, files) {
   }
 }
 
-async function removeSectionImage(key, idx) {
-  const p = products.find((x) => x.id === currentDetailId);
+async function removeSectionImage(iid, idx) {
+  const p = getCurrentProduct();
   if (!p) return;
-  const sec = getSection(p, key);
-  if (!sec || !sec.images[idx]) return;
+  const item = getItem(p, iid);
+  if (!item || !item.images[idx]) return;
   if (!confirm("この画像を削除しますか?")) return;
-  const path = sec.images[idx];
+  const path = item.images[idx];
   try {
-    try { await deleteFile(path, null, `Remove image from ${sec.label}: ${p.id}`); }
+    try { await deleteFile(path, null, `Remove image from ${sectionLabelOf(item)}: ${p.id}`); }
     catch (e) { console.warn("画像削除失敗(続行):", e); }
-    sec.images.splice(idx, 1);
-    await saveData(`Remove image from ${sec.label}: ${p.name}`, mergeCurrentProduct(p));
+    item.images.splice(idx, 1);
+    await saveData(`Remove image from ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
   } catch (err) {
     alert("削除失敗: " + err.message);
@@ -795,10 +888,10 @@ async function saveAllCurrent(forClose) {
   p.name = name;
   p.startDate = startDate;
   document.querySelectorAll(".sec-text-area").forEach((ta) => {
-    const sec = getSection(p, ta.dataset.sec);
+    const item = getItem(p, ta.dataset.iid);
     const idx = parseInt(ta.dataset.idx);
-    if (sec && sec.texts[idx] !== undefined) {
-      sec.texts[idx] = ta.value.trim();
+    if (item && item.texts[idx] !== undefined) {
+      item.texts[idx] = ta.value.trim();
     }
   });
   try {
@@ -943,16 +1036,17 @@ function renderSectionManager() {
     list.innerHTML = '<div class="tag-mgr-empty">項目がまだありません。上から追加してください。</div>';
     return;
   }
-  // 各項目が何商品で中身を持っているか集計
+  // 各項目(key)が何商品で中身を持っているか集計
   const usage = {};
   products.forEach((p) => {
-    if (!p.sectionData) return;
-    Object.keys(p.sectionData).forEach((k) => {
-      const sd = p.sectionData[k];
-      if ((sd.texts && sd.texts.length) || (sd.images && sd.images.length)) {
-        usage[k] = (usage[k] || 0) + 1;
+    if (!Array.isArray(p.sectionItems)) return;
+    const keysWithContent = new Set();
+    p.sectionItems.forEach((it) => {
+      if ((it.texts && it.texts.length) || (it.images && it.images.length)) {
+        keysWithContent.add(it.key);
       }
     });
+    keysWithContent.forEach((k) => { usage[k] = (usage[k] || 0) + 1; });
   });
 
   list.innerHTML = sectionDefs.map((def, i) => `
@@ -1070,28 +1164,29 @@ function startRenameSectionDef(key) {
 async function deleteSectionDef(key) {
   const def = sectionDefs.find((d) => d.key === key);
   if (!def) return;
-  // 中身を持つ商品数を数える
+  // この項目(key)のインスタンスを持つ商品数
   let count = 0;
   products.forEach((p) => {
-    const sd = p.sectionData && p.sectionData[key];
-    if (sd && ((sd.texts && sd.texts.length) || (sd.images && sd.images.length))) count++;
+    if (Array.isArray(p.sectionItems) && p.sectionItems.some((it) => it.key === key)) count++;
   });
   const msg = count > 0
-    ? `項目「${def.label}」を削除しますか?\n${count}商品にこの項目の中身があり、テキスト・画像も削除されます。`
+    ? `項目「${def.label}」を削除しますか?\n${count}商品に並んでいるこの項目(中身含む)も全て削除されます。`
     : `項目「${def.label}」を削除しますか?`;
   if (!confirm(msg)) return;
 
   try {
-    // 各商品のこの項目の画像ファイルを削除
     for (const p of products) {
-      const sd = p.sectionData && p.sectionData[key];
-      if (sd && sd.images) {
-        for (const path of sd.images) {
-          try { await deleteFile(path, null, `Delete section image: ${p.id}`); }
-          catch (e) { console.warn("画像削除失敗(続行):", e); }
+      if (!Array.isArray(p.sectionItems)) continue;
+      // この項目の全インスタンスの画像を削除
+      for (const it of p.sectionItems) {
+        if (it.key === key && it.images) {
+          for (const path of it.images) {
+            try { await deleteFile(path, null, `Delete section image: ${p.id}`); }
+            catch (e) { console.warn("画像削除失敗(続行):", e); }
+          }
         }
       }
-      if (p.sectionData) delete p.sectionData[key];
+      p.sectionItems = p.sectionItems.filter((it) => it.key !== key);
     }
     sectionDefs = sectionDefs.filter((d) => d.key !== key);
     await saveData(`Delete section: ${def.label}`);
@@ -1133,9 +1228,9 @@ async function deleteProduct() {
       catch (e) { console.warn("CSV削除失敗(続行):", e); }
     }
     // 全項目の画像も削除
-    if (p.sectionData) {
-      for (const key of Object.keys(p.sectionData)) {
-        for (const path of (p.sectionData[key].images || [])) {
+    if (Array.isArray(p.sectionItems)) {
+      for (const it of p.sectionItems) {
+        for (const path of (it.images || [])) {
           try { await deleteFile(path, null, `Delete section image: ${p.id}`); }
           catch (e) { console.warn("セクション画像削除失敗(続行):", e); }
         }
@@ -1248,7 +1343,7 @@ async function saveProduct() {
       image: imgPath,
       csvPath,
       csvName,
-      sectionData: {},
+      sectionItems: sectionDefs.map((def) => ({ iid: genId(), key: def.key, texts: [], images: [] })),
       createdAt: new Date().toISOString()
     };
 
