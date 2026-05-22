@@ -2340,3 +2340,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 @media (max-width: 720px) {
   .sec-dual { grid-template-columns: 1fr; }
 }
+
+/* ========== ImageFlow v3.2: 画像一覧のサムネ高さ切り替え ========== */
+/* 縦長表示(750x1230比率、画像全体が見える=contain) */
+.gallery-rows.thumb-tall .row-thumb {
+  width: 88px;
+  height: 144px; /* 88 * 1230/750 ≒ 144 */
+  object-fit: contain;
+  background: var(--bg-2);
+}
