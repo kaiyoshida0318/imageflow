@@ -1,572 +1,160 @@
-/* ==============================================================
-   ImageFlow — Frontend app (v1.1.0)
-   商品レコード中心の構成。GitHub REST API で data.json と
-   images/ , csv/ を直接 commit する。
-   ============================================================== */
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ImageFlow</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42'%3E%3Crect x='3' y='3' width='36' height='36' rx='4' fill='none' stroke='%231b1a17' stroke-width='2'/%3E%3Cpath d='M21 11 L22.8 19.2 L31 21 L22.8 22.8 L21 31 L19.2 22.8 L11 21 L19.2 19.2 Z' fill='%23c8451c'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css?v=1.2.0" />
+</head>
+<body>
 
-const STORAGE_KEY = "imageFlow.auth.v1";
-const DATA_PATH = "data.json";
-const IMAGES_DIR = "images";
-const CSV_DIR = "csv";
+<!-- ============== 認証モーダル ============== -->
+<div id="auth-modal" class="modal auth-modal">
+  <div class="modal-inner">
+    <div class="auth-badge">— INITIAL SETUP —</div>
+    <h2>Welcome to ImageFlow</h2>
+    <p class="auth-desc">GitHub Personal Access Tokenを入力して「接続する」を押してください。トークンはブラウザ内にのみ保存され、GitHubへ直接通信します。<br />(ユーザー名・リポジトリ名は設定済み。変更したい場合のみ下を編集)</p>
+    <details class="auth-advanced">
+      <summary>接続先を変更する(通常は不要)</summary>
+      <label class="field-label">GitHub Username</label>
+      <input id="input-owner" type="text" placeholder="your-github-username" value="kaiyoshida0318" />
+      <label class="field-label">Repository Name</label>
+      <input id="input-repo" type="text" placeholder="imageflow" value="imageflow" />
+      <label class="field-label">Branch</label>
+      <input id="input-branch" type="text" placeholder="main" value="main" />
+    </details>
+    <label class="field-label">Personal Access Token</label>
+    <input id="input-token" type="password" placeholder="ghp_xxxxxxxxxxxx" />
+    <p class="auth-help">
+      → Settings → Developer settings → Personal access tokens → Fine-grained tokens<br />
+      対象リポジトリに Contents: Read and write 権限を付与
+    </p>
+    <button id="auth-save" class="btn-primary">接続する</button>
+    <div id="auth-error" class="auth-error"></div>
+  </div>
+</div>
 
-let auth = null;
-let dataSha = null;
-let products = [];
-let currentDetailId = null;
+<!-- ============== ヘッダー ============== -->
+<header class="site-header">
+  <div class="header-left">
+    <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
+  </div>
+  <div class="header-right">
+    <span class="version-badge">v1.2.0</span>
+    <div class="stat">
+      <span class="stat-num" id="stat-count">0</span>
+      <span class="stat-label">items</span>
+    </div>
+    <button id="btn-add" class="btn-add">+ Add</button>
+    <button id="btn-settings" class="btn-icon" title="接続設定">⚙</button>
+  </div>
+</header>
 
-let pendingImage = null;
-let pendingCsv = null;
+<!-- 検索バーは隠しinputとして保持(互換) -->
+<input id="search-input" type="hidden" value="" />
 
-// ---------- util ----------
-const $ = (id) => document.getElementById(id);
-const b64encode = (str) => btoa(unescape(encodeURIComponent(str)));
-const b64decode = (str) => decodeURIComponent(escape(atob(str)));
-const fmtDate = (iso) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-};
-const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+<!-- ============== メイン ============== -->
+<main>
+  <div id="loading" class="state-msg">読み込み中…</div>
+  <div id="empty-state" class="state-msg" style="display:none">
+    <div class="empty-illust">◇ ◆ ◇</div>
+    <p>まだデータがありません。右上の <b>+ Add</b> から追加しましょう。</p>
+  </div>
+  <div id="gallery" class="gallery"></div>
+</main>
 
-function todayShort() {
-  const d = new Date();
-  const yy = String(d.getFullYear()).slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yy}-${mm}${dd}`;
-}
+<!-- ============== 追加モーダル(商品登録) ============== -->
+<div id="add-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="add-modal">×</button>
+    <h2>新しい商品</h2>
 
-// ---------- GitHub API ----------
-async function ghFetch(path, options = {}) {
-  const url = `https://api.github.com/repos/${auth.owner}/${auth.repo}/${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Authorization": `token ${auth.token}`,
-      "Accept": "application/vnd.github+json",
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
-  if (!res.ok && res.status !== 404 && res.status !== 409 && res.status !== 422) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `GitHub API error: ${res.status}`);
-  }
-  return res;
-}
+    <label class="field-label">商品画像</label>
+    <div id="dropzone" class="dropzone">
+      <div class="dz-icon">⇪</div>
+      <div class="dz-text">画像をドラッグ&ドロップ<br /><span>またはクリックしてファイル選択</span></div>
+      <input id="file-input" type="file" accept="image/*" hidden />
+    </div>
+    <div id="preview-wrap" class="preview-wrap" style="display:none">
+      <img id="preview-img" alt="preview" />
+      <button id="preview-clear">別の画像を選ぶ</button>
+    </div>
 
-async function loadData() {
-  const res = await ghFetch(`contents/${DATA_PATH}?ref=${auth.branch}`);
-  if (res.status === 404) {
-    products = [];
-    dataSha = null;
-    return;
-  }
-  const data = await res.json();
-  dataSha = data.sha;
-  try {
-    const json = JSON.parse(b64decode(data.content.replace(/\n/g, "")));
-    products = Array.isArray(json.products) ? json.products : [];
-  } catch (e) {
-    console.error("data.json 解析失敗", e);
-    products = [];
-  }
-}
+    <label class="field-label">スタート日付 <span class="required">*</span></label>
+    <input id="input-start-date" type="text" placeholder="例: 26-0522" />
+    <p class="field-hint" style="margin-top:4px">※ 制作を開始した日付。形式は自由(例: 26-0522)。</p>
 
-async function saveData(commitMessage, mergeFn) {
-  const MAX_RETRIES = 3;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const body = {
-      message: commitMessage,
-      content: b64encode(JSON.stringify({ products }, null, 2)),
-      branch: auth.branch
-    };
-    if (dataSha) body.sha = dataSha;
+    <label class="field-label">商品名 <span class="required">*</span></label>
+    <input id="input-product-name" type="text" placeholder="例: ○○サプリ、△△化粧水" />
 
-    const res = await ghFetch(`contents/${DATA_PATH}`, {
-      method: "PUT",
-      body: JSON.stringify(body)
-    });
+    <label class="field-label">楽天レビューCSV(ある場合)</label>
+    <div id="csv-dropzone" class="dropzone sub-dropzone">
+      <div class="dz-icon" style="font-size:22px">📄</div>
+      <div class="dz-text" style="font-size:12px">CSVをドラッグ&ドロップ<br /><span>またはクリックして選択(任意)</span></div>
+      <input id="csv-file-input" type="file" accept=".csv,text/csv" hidden />
+    </div>
+    <div id="csv-preview" class="csv-preview" style="display:none">
+      <span id="csv-filename" class="csv-filename"></span>
+      <button id="csv-clear" class="csv-clear">×</button>
+    </div>
 
-    if (res.ok) {
-      const result = await res.json();
-      dataSha = result.content.sha;
-      return;
-    }
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="add-modal">キャンセル</button>
+      <button id="btn-save" class="btn-primary">保存してコミット</button>
+    </div>
+    <div id="save-status" class="save-status"></div>
+  </div>
+</div>
 
-    const errBody = await res.json().catch(() => ({}));
-    const isConflict = res.status === 409 || res.status === 422 ||
-                       (errBody.message && /does not match|sha/i.test(errBody.message));
+<!-- ============== 商品 編集ページ ============== -->
+<div id="detail-modal" class="modal" style="display:none">
+  <div class="modal-inner editor">
+    <div class="detail-top-actions">
+      <button id="btn-delete" class="btn-danger">商品を削除</button>
+      <button class="modal-close" data-close="detail-modal">×</button>
+    </div>
 
-    if (isConflict) {
-      console.warn(`競合検出 (attempt ${attempt + 1}/${MAX_RETRIES}) - 最新を取得してリトライ`);
-      const mine = products.slice();
-      await loadData();
-      if (mergeFn) {
-        products = mergeFn(products);
-      } else {
-        const myMap = new Map(mine.map((p) => [p.id, p]));
-        const merged = products.filter((p) => !myMap.has(p.id));
-        merged.push(...mine);
-        merged.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-        products = merged;
-      }
-      continue;
-    }
-
-    throw new Error(errBody.message || "data.json の保存に失敗");
-  }
-  throw new Error("data.json の保存が複数回競合しました。ページをリロードして再度お試しください。");
-}
-
-async function uploadFile(path, base64Content, commitMessage) {
-  const res = await ghFetch(`contents/${path}`, {
-    method: "PUT",
-    body: JSON.stringify({
-      message: commitMessage,
-      content: base64Content,
-      branch: auth.branch
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || "ファイルアップロードに失敗");
-  }
-}
-
-async function deleteFile(path, sha, commitMessage) {
-  if (!sha) {
-    const info = await ghFetch(`contents/${path}?ref=${auth.branch}`);
-    if (info.status === 404) return;
-    const j = await info.json();
-    sha = j.sha;
-  }
-  await ghFetch(`contents/${path}`, {
-    method: "DELETE",
-    body: JSON.stringify({ message: commitMessage, sha, branch: auth.branch })
-  });
-}
-
-const blobCache = new Map();
-
-async function fetchAsBlobUrl(path, isImage = true) {
-  if (blobCache.has(path)) return blobCache.get(path);
-  try {
-    const res = await ghFetch(`contents/${path}?ref=${auth.branch}`);
-    if (!res.ok) throw new Error(`取得失敗: ${path}`);
-    const data = await res.json();
-
-    let cleanBase64;
-    if (data.content && data.encoding === "base64") {
-      cleanBase64 = data.content.replace(/\s/g, "");
-    } else if (data.sha) {
-      const blobRes = await ghFetch(`git/blobs/${data.sha}`);
-      if (!blobRes.ok) throw new Error(`Git Blob API失敗: ${path}`);
-      const blobData = await blobRes.json();
-      if (!blobData.content) throw new Error(`contentが空: ${path}`);
-      cleanBase64 = blobData.content.replace(/\s/g, "");
-    } else {
-      throw new Error(`contentもshaも取得できず: ${path}`);
-    }
-
-    const binary = atob(cleanBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    let mime;
-    if (isImage) {
-      const ext = (path.split(".").pop() || "png").toLowerCase();
-      mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
-           : ext === "gif" ? "image/gif"
-           : ext === "webp" ? "image/webp"
-           : "image/png";
-    } else {
-      mime = "text/csv";
-    }
-    const blob = new Blob([bytes], { type: mime });
-    const url = URL.createObjectURL(blob);
-    blobCache.set(path, url);
-    return url;
-  } catch (e) {
-    console.error("読み込み失敗", path, e);
-    return "";
-  }
-}
-
-function loadImageInto(imgEl, path) {
-  imgEl.dataset.loading = "1";
-  fetchAsBlobUrl(path, true).then((url) => {
-    if (url) imgEl.src = url;
-    imgEl.removeAttribute("data-loading");
-  });
-}
-
-// ---------- 認証 ----------
-function loadAuth() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
-}
-function saveAuth(a) { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
-function clearAuth() { localStorage.removeItem(STORAGE_KEY); }
-
-async function verifyAuth(a) {
-  const res = await fetch(`https://api.github.com/repos/${a.owner}/${a.repo}`, {
-    headers: { "Authorization": `token ${a.token}`, "Accept": "application/vnd.github+json" }
-  });
-  if (!res.ok) throw new Error("リポジトリにアクセスできません。ユーザー名・リポジトリ名・トークン権限をご確認ください。");
-  return true;
-}
-
-// ---------- レンダリング(商品一覧) ----------
-function render() {
-  $("stat-count").textContent = products.length;
-  const gallery = $("gallery");
-  $("loading").style.display = "none";
-
-  if (products.length === 0) {
-    $("empty-state").style.display = "block";
-    gallery.innerHTML = "";
-    return;
-  }
-  $("empty-state").style.display = "none";
-
-  const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-
-  gallery.innerHTML = sorted.map((p) => {
-    const imgArea = p.image
-      ? `<div class="card-img"><img data-path="${escapeHtml(p.image)}" alt="" loading="lazy" /></div>`
-      : `<div class="card-img card-noimg"><span>画像なし</span></div>`;
-    const csvBadge = p.csvPath ? `<span class="card-csv-badge">📄 CSV</span>` : "";
-    return `
-    <div class="card" data-id="${escapeHtml(p.id)}">
-      ${imgArea}
-      <div class="card-body">
-        <div class="card-start-date">${escapeHtml(p.startDate || "—")}</div>
-        <h3 class="card-title">${escapeHtml(p.name || "無題")}</h3>
-        <div class="card-meta">
-          <span>${csvBadge}</span>
-          <span>${p.createdAt ? fmtDate(p.createdAt) : ""}</span>
-        </div>
+    <!-- 商品情報(その場編集) -->
+    <div class="editor-head">
+      <div class="editor-head-img" id="editor-head-img">
+        <img id="detail-img" alt="" />
+        <div id="detail-noimg" class="product-detail-noimg" style="display:none">画像なし</div>
+        <button id="editor-img-change" class="editor-img-change" title="画像を変更">画像を変更</button>
+        <input id="editor-img-input" type="file" accept="image/*" hidden />
       </div>
-    </div>`;
-  }).join("");
+      <div class="editor-head-info">
+        <label class="field-label">スタート日付</label>
+        <input id="edit-start-date" type="text" class="editor-inline-input" placeholder="例: 26-0522" />
+        <label class="field-label">商品名</label>
+        <input id="edit-product-name" type="text" class="editor-inline-input editor-name-input" placeholder="商品名" />
 
-  document.querySelectorAll(".card-img img[data-path]").forEach((img) => {
-    loadImageInto(img, img.dataset.path);
-  });
-  document.querySelectorAll(".card").forEach((el) => {
-    el.addEventListener("click", () => openDetail(el.dataset.id));
-  });
-}
+        <label class="field-label">楽天レビューCSV</label>
+        <div id="editor-csv-row" class="editor-csv-row">
+          <a id="detail-csv-link" class="csv-download-link" href="#" download style="display:none">📄 <span id="detail-csv-name"></span></a>
+          <span id="editor-csv-none" class="editor-csv-none">未登録</span>
+          <button id="editor-csv-change" class="btn-secondary editor-csv-btn">CSVを設定</button>
+          <input id="editor-csv-input" type="file" accept=".csv,text/csv" hidden />
+        </div>
 
-// ---------- 商品詳細 ----------
-function closeAllModals() {
-  ["add-modal", "detail-modal"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-}
+        <div id="editor-head-status" class="save-status"></div>
+      </div>
+    </div>
 
-function openDetail(id) {
-  const p = products.find((x) => x.id === id);
-  if (!p) return;
-  closeAllModals();
-  currentDetailId = id;
+    <!-- セクション群(TOP画像・分析・楽天レビュー・構成案) -->
+    <div id="editor-sections" class="editor-sections"></div>
+  </div>
+</div>
 
-  if (p.image) {
-    $("detail-img").style.display = "";
-    $("detail-noimg").style.display = "none";
-    $("detail-img").src = "";
-    loadImageInto($("detail-img"), p.image);
-  } else {
-    $("detail-img").style.display = "none";
-    $("detail-noimg").style.display = "flex";
-  }
+<!-- セクション内アイテム拡大表示用(画像クリック) -->
+<div id="lightbox" class="lightbox" style="display:none">
+  <img id="lightbox-img" alt="" />
+</div>
 
-  $("detail-date").textContent = p.startDate || "";
-  $("detail-title").textContent = p.name || "無題";
 
-  if (p.csvPath) {
-    $("csv-section").style.display = "block";
-    $("detail-csv-name").textContent = p.csvName || "review.csv";
-    const link = $("detail-csv-link");
-    link.textContent = "📄 読み込み中…";
-    fetchAsBlobUrl(p.csvPath, false).then((url) => {
-      if (url) {
-        link.href = url;
-        link.download = p.csvName || "review.csv";
-        link.innerHTML = `📄 <span>${escapeHtml(p.csvName || "review.csv")}</span> をダウンロード`;
-      } else {
-        link.textContent = "📄 CSV取得に失敗しました";
-      }
-    });
-  } else {
-    $("csv-section").style.display = "none";
-  }
-
-  $("detail-modal").style.display = "flex";
-}
-
-async function deleteProduct() {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return;
-  if (!confirm(`商品「${p.name}」を削除しますか?\n(画像・CSVファイルも削除されます)`)) return;
-  try {
-    if (p.image) {
-      try { await deleteFile(p.image, null, `Delete image: ${p.id}`); }
-      catch (e) { console.warn("画像削除失敗(続行):", e); }
-    }
-    if (p.csvPath) {
-      try { await deleteFile(p.csvPath, null, `Delete csv: ${p.id}`); }
-      catch (e) { console.warn("CSV削除失敗(続行):", e); }
-    }
-    products = products.filter((x) => x.id !== p.id);
-    await saveData(`Delete product: ${p.name}`, (latest) => latest.filter((x) => x.id !== p.id));
-    $("detail-modal").style.display = "none";
-    render();
-  } catch (err) {
-    alert("削除に失敗しました: " + err.message);
-  }
-}
-
-// ---------- 追加(商品登録) ----------
-function resetAddForm() {
-  pendingImage = null;
-  pendingCsv = null;
-  $("preview-wrap").style.display = "none";
-  $("dropzone").style.display = "block";
-  $("file-input").value = "";
-  $("input-start-date").value = todayShort();
-  $("input-product-name").value = "";
-  $("csv-file-input").value = "";
-  $("csv-preview").style.display = "none";
-  $("csv-filename").textContent = "";
-  $("save-status").textContent = "";
-  $("save-status").className = "save-status";
-}
-
-function handleImageFile(file) {
-  if (!file || !file.type.startsWith("image/")) {
-    alert("画像ファイルを選んでください");
-    return;
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    alert("画像が大きすぎます(50MB超)。サイズを小さくしてください。");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    const base64 = dataUrl.split(",")[1];
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    pendingImage = { base64, mimeType: file.type, ext };
-    $("preview-img").src = dataUrl;
-    $("preview-wrap").style.display = "block";
-    $("dropzone").style.display = "none";
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleCsvFile(file) {
-  if (!file) return;
-  const name = file.name.toLowerCase();
-  if (!name.endsWith(".csv") && file.type !== "text/csv") {
-    alert("CSVファイルを選んでください");
-    return;
-  }
-  if (file.size > 25 * 1024 * 1024) {
-    alert("CSVが大きすぎます(25MB超)。");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    const base64 = dataUrl.split(",")[1];
-    pendingCsv = { base64, fileName: file.name };
-    $("csv-filename").textContent = file.name;
-    $("csv-preview").style.display = "flex";
-  };
-  reader.readAsDataURL(file);
-}
-
-async function saveProduct() {
-  const startDate = $("input-start-date").value.trim();
-  const name = $("input-product-name").value.trim();
-  if (!startDate) { alert("スタート日付を入力してください"); return; }
-  if (!name) { alert("商品名を入力してください"); return; }
-
-  const btn = $("btn-save");
-  btn.disabled = true;
-  $("save-status").textContent = "保存中…";
-  $("save-status").className = "save-status";
-
-  try {
-    const id = genId();
-    let imgPath = undefined;
-    if (pendingImage) {
-      $("save-status").textContent = "画像をアップロード中…";
-      imgPath = `${IMAGES_DIR}/${id}.${pendingImage.ext}`;
-      await uploadFile(imgPath, pendingImage.base64, `Add product image: ${id}`);
-    }
-
-    let csvPath = undefined;
-    let csvName = undefined;
-    if (pendingCsv) {
-      $("save-status").textContent = "CSVをアップロード中…";
-      const safeName = pendingCsv.fileName.replace(/[^\w.\-]/g, "_");
-      csvPath = `${CSV_DIR}/${id}-${safeName}`;
-      csvName = pendingCsv.fileName;
-      await uploadFile(csvPath, pendingCsv.base64, `Add product csv: ${id}`);
-    }
-
-    $("save-status").textContent = "メタデータを保存中…";
-    const product = {
-      id,
-      name,
-      startDate,
-      image: imgPath,
-      csvPath,
-      csvName,
-      createdAt: new Date().toISOString()
-    };
-
-    products.unshift(product);
-    await saveData(`Add product: ${name}`, (latest) => [product, ...latest.filter((p) => p.id !== id)]);
-
-    $("save-status").textContent = "✓ 保存しました";
-    $("save-status").className = "save-status ok";
-    setTimeout(() => {
-      $("add-modal").style.display = "none";
-      resetAddForm();
-      render();
-    }, 700);
-  } catch (err) {
-    $("save-status").textContent = "✗ " + err.message;
-    $("save-status").className = "save-status err";
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-// ---------- イベント ----------
-function bindEvents() {
-  $("auth-save").addEventListener("click", async () => {
-    const a = {
-      owner: $("input-owner").value.trim(),
-      repo: $("input-repo").value.trim(),
-      branch: $("input-branch").value.trim() || "main",
-      token: $("input-token").value.trim()
-    };
-    if (!a.owner || !a.repo || !a.token) {
-      $("auth-error").textContent = "全ての項目を入力してください";
-      return;
-    }
-    $("auth-error").textContent = "";
-    $("auth-save").disabled = true;
-    $("auth-save").textContent = "接続中…";
-    try {
-      await verifyAuth(a);
-      saveAuth(a);
-      auth = a;
-      $("auth-modal").style.display = "none";
-      await init();
-    } catch (err) {
-      $("auth-error").textContent = err.message;
-    } finally {
-      $("auth-save").disabled = false;
-      $("auth-save").textContent = "接続する";
-    }
-  });
-
-  $("btn-settings").addEventListener("click", () => {
-    if (confirm("接続設定をリセットしますか? (トークン等をブラウザから削除)")) {
-      clearAuth();
-      location.reload();
-    }
-  });
-
-  $("logo-link").addEventListener("click", () => {
-    closeAllModals();
-    render();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-
-  $("btn-add").addEventListener("click", () => {
-    resetAddForm();
-    $("add-modal").style.display = "flex";
-    setTimeout(() => $("input-product-name").focus(), 50);
-  });
-
-  document.querySelectorAll("[data-close]").forEach((el) => {
-    el.addEventListener("click", () => {
-      $(el.dataset.close).style.display = "none";
-    });
-  });
-
-  const dz = $("dropzone");
-  dz.addEventListener("click", () => $("file-input").click());
-  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
-  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-  dz.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dz.classList.remove("drag");
-    handleImageFile(e.dataTransfer.files[0]);
-  });
-  $("file-input").addEventListener("change", (e) => handleImageFile(e.target.files[0]));
-  $("preview-clear").addEventListener("click", () => {
-    pendingImage = null;
-    $("preview-wrap").style.display = "none";
-    $("dropzone").style.display = "block";
-    $("file-input").value = "";
-  });
-
-  const csvDz = $("csv-dropzone");
-  csvDz.addEventListener("click", () => $("csv-file-input").click());
-  csvDz.addEventListener("dragover", (e) => { e.preventDefault(); csvDz.classList.add("drag"); });
-  csvDz.addEventListener("dragleave", () => csvDz.classList.remove("drag"));
-  csvDz.addEventListener("drop", (e) => {
-    e.preventDefault();
-    csvDz.classList.remove("drag");
-    handleCsvFile(e.dataTransfer.files[0]);
-  });
-  $("csv-file-input").addEventListener("change", (e) => {
-    handleCsvFile(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("csv-clear").addEventListener("click", () => {
-    pendingCsv = null;
-    $("csv-preview").style.display = "none";
-    $("csv-filename").textContent = "";
-    $("csv-file-input").value = "";
-  });
-
-  $("btn-save").addEventListener("click", saveProduct);
-  $("btn-delete").addEventListener("click", deleteProduct);
-
-  window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => e.preventDefault());
-}
-
-// ---------- 初期化 ----------
-async function init() {
-  $("loading").style.display = "block";
-  $("gallery").innerHTML = "";
-  try {
-    await loadData();
-    render();
-  } catch (err) {
-    $("loading").textContent = "読み込み失敗: " + err.message;
-  }
-}
-
-(function start() {
-  bindEvents();
-  closeAllModals();
-  auth = loadAuth();
-  if (auth) {
-    $("auth-modal").style.display = "none";
-    init();
-  } else {
-    $("auth-modal").style.display = "flex";
-  }
-})();
+<script src="app.js?v=1.2.0"></script>
+</body>
+</html>
