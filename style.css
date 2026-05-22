@@ -1640,6 +1640,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-size: 14px;
   line-height: 1.8;
   min-height: 200px;
+  background: #ffffff;
 }
 .sec-text-remove {
   flex-shrink: 0;
