@@ -2157,3 +2157,42 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   opacity: 0.3;
   cursor: default;
 }
+
+/* ========== ImageFlow v2.7: 項目管理モーダルを大きく ========== */
+.modal-inner.section-mgr-big {
+  max-width: 1100px;
+  width: 92vw;
+  min-height: 80vh;
+  padding: 40px 48px;
+}
+/* 項目リストの各行を大きく */
+.section-mgr-big .section-mgr-item {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  background: var(--bg);
+}
+.section-mgr-big .section-mgr-main {
+  gap: 10px;
+}
+.section-mgr-big .tag-mgr-item-name {
+  font-size: 17px;
+  font-weight: 600;
+}
+.section-mgr-big .tag-mgr-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.section-mgr-big .section-mgr-question {
+  font-size: 13px;
+  padding: 12px 16px;
+}
+.section-mgr-big #section-mgr-new-name {
+  font-size: 15px;
+  padding: 12px 16px;
+}
+.section-mgr-big .section-mgr-q-input {
+  font-size: 14px;
+  min-height: 70px;
+}
