@@ -1682,6 +1682,103 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 
+/* ライトボックス前後送り(v3.4.0) */
+.lightbox .lightbox-main-img {
+  max-width: 78vw;
+  position: relative;
+  z-index: 2;
+}
+/* × 閉じる(右上) */
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  z-index: 10;
+}
+.lightbox-close:hover { background: var(--accent); transform: scale(1.06); }
+/* カウンター(上中央) */
+.lightbox-counter {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: rgba(27,26,23,0.55);
+  padding: 6px 16px;
+  border-radius: 999px;
+  z-index: 10;
+  pointer-events: none;
+}
+/* 前後送りボタン(左右、薄いプレビュー画像つき) */
+.lightbox-nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18vw;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  z-index: 5;
+  overflow: hidden;
+}
+.lightbox-nav-prev { left: 0; justify-content: flex-start; }
+.lightbox-nav-next { right: 0; justify-content: flex-end; }
+.lightbox-side-img {
+  max-width: 14vw;
+  max-height: 60vh;
+  object-fit: contain;
+  opacity: 0.22;
+  border-radius: var(--radius);
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: none !important;
+}
+.lightbox-nav:hover .lightbox-side-img { opacity: 0.5; }
+.lightbox-side-img[src=""], .lightbox-side-img:not([src]) { display: none; }
+/* 矢印 */
+.lightbox-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 56px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.lightbox-nav-prev .lightbox-arrow { left: 18px; }
+.lightbox-nav-next .lightbox-arrow { right: 18px; }
+.lightbox-nav:hover .lightbox-arrow { opacity: 1; }
+/* 送り先が無いときはボタンを隠す */
+.lightbox-nav.disabled { display: none; }
+@media (max-width: 720px) {
+  .lightbox .lightbox-main-img { max-width: 88vw; }
+  .lightbox-side-img { display: none !important; }
+  .lightbox-nav { width: 64px; min-width: 64px; background: rgba(27,26,23,0.25); }
+  .lightbox-arrow { font-size: 40px; }
+}
+
 @media (max-width: 720px) {
   .modal-inner.editor { padding: 24px 18px; }
   .editor-layout { grid-template-columns: 1fr; gap: 16px; }
@@ -2307,6 +2404,31 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-side .sec-images {
   margin-bottom: 0;
 }
+/* v3.4.0: 素材ラベル行(ラベル + 「右上の完成品を使用」ボタン) */
+.sec-side-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sec-use-final {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.sec-use-final:hover {
+  border-color: var(--ink-soft);
+  background: var(--bg-2);
+  color: var(--ink);
+}
 /* ⇔ 反対側へ移動ボタン */
 .sec-swap {
   position: absolute;
@@ -2351,8 +2473,13 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 /* ========== ImageFlow v3.3: 素材除外ボタン ========== */
+/* v3.4.0: アクティブ状態のトーンを落とす(派手なオレンジ→落ち着いたインク系) */
 .btn-header.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: var(--bg-2);
+  color: var(--ink);
+  border-color: var(--ink-soft);
+  font-weight: 500;
+}
+.btn-header.active:hover {
+  background: var(--line);
 }
