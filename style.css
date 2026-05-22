@@ -1694,7 +1694,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-close-save {
   position: fixed;
   top: calc(6vh - 18px);
-  right: calc(2vw - 18px);
+  right: calc(2vw + 24px);
   width: 60px;
   height: 60px;
   border-radius: 50%;
@@ -1877,3 +1877,60 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   margin-bottom: 14px;
   line-height: 1.6;
 }
+
+/* ========== ImageFlow v2.1: 商品ページで質問文編集 ========== */
+.sec-question {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.sec-question:hover {
+  background: #f0d9cc;
+}
+.sec-question-edit {
+  font-size: 11px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.sec-question-empty {
+  color: var(--ink-mute);
+  background: var(--bg-2);
+  font-style: italic;
+}
+.sec-question-empty:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sec-question-input {
+  width: 100%;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 6px;
+  background: #ffffff;
+}
+.sec-question-btns {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.sec-q-save, .sec-q-cancel {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  transition: all 0.15s;
+}
+.sec-q-save {
+  background: var(--ink);
+  color: #fff;
+}
+.sec-q-save:hover { background: var(--accent); }
+.sec-q-cancel {
+  background: var(--card);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.sec-q-cancel:hover { background: var(--bg-2); }
