@@ -1705,3 +1705,34 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   padding: 7px 14px;
   font-size: 12px;
 }
+
+/* ========== ImageFlow v1.6: テキスト拡大/縮小トグル ========== */
+/* テキスト欄の右のボタン群(拡大・削除を縦に) */
+.sec-text-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sec-text-expand {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.sec-text-expand:hover {
+  background: var(--accent);
+  color: #fff;
+}
+/* 拡大状態のテキストエリア */
+.sec-text-area.expanded {
+  min-height: 520px;
+  font-size: 15px;
+}
