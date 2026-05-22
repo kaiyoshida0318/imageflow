@@ -2135,3 +2135,25 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-style: italic;
   padding: 8px;
 }
+
+/* ========== ImageFlow v2.6: 項目の上下並べ替え ========== */
+.sec-move {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+.sec-move:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
