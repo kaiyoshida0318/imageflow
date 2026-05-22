@@ -11,9 +11,7 @@ const CSV_DIR = "csv";
 
 // デフォルトの項目(セクション)。楽天レビューはCSVインポートが担うため別扱い。
 const DEFAULT_SECTIONS = [
-  { key: "top", label: "TOP画像" },
-  { key: "analysis", label: "分析" },
-  { key: "plan", label: "構成案" }
+  { key: "analysis", label: "分析" }
 ];
 
 // 商品にsectionsが無ければデフォルトで補完して返す
@@ -26,7 +24,14 @@ function ensureSections(p) {
       if (!Array.isArray(s.texts)) s.texts = [];
       if (!Array.isArray(s.images)) s.images = [];
     });
-    // デフォルトにあってまだ無いセクションを足す(順序はデフォルト基準)
+    // デフォルト外かつ中身が空のセクションは削除(TOP画像・構成案を廃止した名残を掃除)
+    const defaultKeys = new Set(DEFAULT_SECTIONS.map((d) => d.key));
+    p.sections = p.sections.filter((s) => {
+      if (defaultKeys.has(s.key)) return true;
+      // デフォルト外でも、中身があれば残す
+      return (s.texts && s.texts.length) || (s.images && s.images.length);
+    });
+    // デフォルトにあってまだ無いセクションを足す
     const have = new Set(p.sections.map((s) => s.key));
     DEFAULT_SECTIONS.forEach((d) => {
       if (!have.has(d.key)) p.sections.push({ key: d.key, label: d.label, texts: [], images: [] });
