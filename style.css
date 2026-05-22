@@ -59,7 +59,7 @@ input, textarea { font-family: inherit; }
 .header-left { display: flex; align-items: center; }
 .logo-full {
   display: block;
-  height: 28px;
+  height: 36px;
   width: auto;
   flex-shrink: 0;
   transition: opacity 0.15s;
