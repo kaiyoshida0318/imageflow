@@ -59,7 +59,7 @@ input, textarea { font-family: inherit; }
 .header-left { display: flex; align-items: center; }
 .logo-full {
   display: block;
-  height: 36px;
+  height: 43px;
   width: auto;
   flex-shrink: 0;
   transition: opacity 0.15s;
@@ -135,7 +135,7 @@ input, textarea { font-family: inherit; }
   overflow-x: auto;
   scrollbar-width: thin;
   position: sticky;
-  top: 56px;
+  top: 64px;
   z-index: 48;
 }
 .tab-list {
