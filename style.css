@@ -2279,3 +2279,64 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-title-save { background: var(--ink); color: #fff; border-color: var(--ink); }
 .sec-title-save:hover { background: var(--accent); border-color: var(--accent); }
 .sec-title-cancel:hover, .sec-title-reset:hover { background: var(--bg-2); color: var(--ink); }
+
+/* ========== ImageFlow v3.1: 素材/完成品の2エリア ========== */
+.sec-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.sec-side {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg);
+  min-width: 0;
+}
+.sec-side-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.sec-side .sec-images {
+  margin-bottom: 0;
+}
+/* ⇔ 反対側へ移動ボタン */
+.sec-swap {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  background: rgba(27,26,23,0.72);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sec-swap:hover { background: var(--accent); }
+/* ファイルチップ内の⇔位置調整 */
+.sec-file-item { position: relative; }
+.sec-file-item .sec-swap {
+  position: static;
+  width: 20px;
+  height: 20px;
+  background: var(--card);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.sec-file-item .sec-swap:hover { background: var(--accent); color: #fff; }
+@media (max-width: 720px) {
+  .sec-dual { grid-template-columns: 1fr; }
+}
