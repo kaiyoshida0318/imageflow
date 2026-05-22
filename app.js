@@ -421,11 +421,17 @@ function renderSections(p) {
           <input type="file" class="sec-img-input" data-sec="${escapeHtml(def.key)}" accept="image/*" multiple hidden />
         </div>
       </div>
+      ${(() => {
+        const effectiveQ = (sec.question !== undefined && sec.question !== null && sec.question !== "")
+          ? sec.question
+          : (def.question || "");
+        return `
       <div class="sec-question-wrap" data-sec="${escapeHtml(def.key)}">
-        ${def.question
-          ? `<div class="sec-question" data-sec="${escapeHtml(def.key)}" title="クリックで質問文を編集(全商品に反映)">💬 ${escapeHtml(def.question)} <span class="sec-question-edit">✎</span></div>`
-          : `<div class="sec-question sec-question-empty" data-sec="${escapeHtml(def.key)}" title="クリックで質問文を追加(全商品に反映)">＋ 質問文を追加</div>`}
-      </div>
+        ${effectiveQ
+          ? `<div class="sec-question" data-sec="${escapeHtml(def.key)}" title="クリックでこの商品の質問文を編集">💬 ${escapeHtml(effectiveQ)} <span class="sec-question-edit">✎</span></div>`
+          : `<div class="sec-question sec-question-empty" data-sec="${escapeHtml(def.key)}" title="クリックでこの商品の質問文を追加">＋ 質問文を追加</div>`}
+      </div>`;
+      })()}
       <div class="sec-images">${imagesHtml || '<span class="sec-empty">画像なし</span>'}</div>
       <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
     </div>`;
@@ -478,37 +484,49 @@ function renderSections(p) {
   });
 }
 
-// 商品ページ上で質問文をインライン編集(全商品共通の定義を更新)
+// 商品ページ上で質問文をインライン編集(この商品だけに保存)
 function editSectionQuestionInline(key) {
+  const p = getCurrentProduct();
+  if (!p) return;
   const def = sectionDefs.find((d) => d.key === key);
-  if (!def) return;
+  const sec = getSectionData(p, key);
   const wrap = document.querySelector(`.sec-question-wrap[data-sec="${CSS.escape(key)}"]`);
   if (!wrap) return;
-  const oldQ = def.question || "";
+  // 現在この商品で効いている質問文(個別 > デフォルト)
+  const currentQ = (sec.question !== undefined && sec.question !== null && sec.question !== "")
+    ? sec.question
+    : (def && def.question ? def.question : "");
+  const placeholder = (def && def.question) ? `デフォルト: ${def.question}` : "例: この商品の強み・弱みは？";
   wrap.innerHTML = `
-    <textarea class="sec-question-input" rows="2" placeholder="例: この商品の強み・弱みは？競合との違いは？(全商品に反映)">${escapeHtml(oldQ)}</textarea>
+    <textarea class="sec-question-input" rows="2" placeholder="${escapeHtml(placeholder)}">${escapeHtml(currentQ)}</textarea>
     <div class="sec-question-btns">
-      <button class="sec-q-save">💾 保存(全商品に反映)</button>
+      <button class="sec-q-save">💾 保存(この商品のみ)</button>
       <button class="sec-q-cancel">キャンセル</button>
+      ${(sec.question !== undefined && sec.question !== null && sec.question !== "") ? '<button class="sec-q-reset">雛形に戻す</button>' : ''}
     </div>
   `;
   const input = wrap.querySelector(".sec-question-input");
   input.focus();
-  const save = async () => {
-    const newQ = input.value.trim();
-    if ((def.question || "") === newQ) { renderSections(getCurrentProduct()); return; }
+  const save = async (resetToDefault) => {
+    const newQ = resetToDefault ? "" : input.value.trim();
     try {
-      def.question = newQ || undefined;
-      await saveData(`Edit question: ${def.label}`);
-      renderSections(getCurrentProduct());
+      if (resetToDefault || newQ === "") {
+        // 個別質問文を消す(デフォルト雛形に戻る)
+        delete sec.question;
+      } else {
+        sec.question = newQ;
+      }
+      await saveData(`Edit product question: ${p.name}`, mergeCurrentProduct(p));
+      renderSections(p);
     } catch (err) {
       alert("保存失敗: " + err.message);
-      def.question = oldQ || undefined;
-      renderSections(getCurrentProduct());
+      renderSections(p);
     }
   };
-  wrap.querySelector(".sec-q-save").addEventListener("click", save);
-  wrap.querySelector(".sec-q-cancel").addEventListener("click", () => renderSections(getCurrentProduct()));
+  wrap.querySelector(".sec-q-save").addEventListener("click", () => save(false));
+  wrap.querySelector(".sec-q-cancel").addEventListener("click", () => renderSections(p));
+  const resetBtn = wrap.querySelector(".sec-q-reset");
+  if (resetBtn) resetBtn.addEventListener("click", () => save(true));
 }
 
 function getCurrentProduct() {
@@ -842,11 +860,11 @@ function renderSectionManager() {
         <span class="tag-mgr-item-count">${usage[def.key] || 0} 商品で使用</span>
         ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">▲</button>` : '<span style="width:30px"></span>'}
         ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▼</button>` : '<span style="width:30px"></span>'}
-        <button class="tag-mgr-btn" data-action="question" data-key="${escapeHtml(def.key)}">質問文編集</button>
+        <button class="tag-mgr-btn" data-action="question" data-key="${escapeHtml(def.key)}">雛形編集</button>
         <button class="tag-mgr-btn" data-action="rename" data-key="${escapeHtml(def.key)}">名前変更</button>
         <button class="tag-mgr-btn danger" data-action="delete" data-key="${escapeHtml(def.key)}">削除</button>
       </div>
-      <div class="section-mgr-question">${def.question ? '💬 ' + escapeHtml(def.question) : '<span class="section-mgr-noq">質問文なし</span>'}</div>
+      <div class="section-mgr-question">${def.question ? '💬 (雛形) ' + escapeHtml(def.question) : '<span class="section-mgr-noq">雛形なし</span>'}</div>
     </div>
   `).join("");
 
