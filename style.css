@@ -1449,8 +1449,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* ========== ImageFlow v1.2: 商品編集ページ ========== */
 .modal-inner.editor {
-  max-width: 1100px;
-  padding: 36px 40px;
+  max-width: 1500px;
+  width: 96vw;
+  min-height: 88vh;
+  padding: 40px 48px;
 }
 
 /* 編集ページ: 左右2カラムレイアウト */
@@ -1635,9 +1637,9 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex: 1;
   resize: vertical;
   font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.7;
-  min-height: 60px;
+  font-size: 14px;
+  line-height: 1.8;
+  min-height: 200px;
 }
 .sec-text-remove {
   flex-shrink: 0;
