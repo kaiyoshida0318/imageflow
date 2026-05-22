@@ -27,7 +27,8 @@
   "sectionDefs": [
     {
       "key": "analysis",
-      "label": "全体分析"
+      "label": "全体分析",
+      "question": "全体分析をここに入力するらしい"
     },
     {
       "key": "top",
