@@ -381,7 +381,10 @@ function renderSections(p) {
     const textsHtml = (sec.texts || []).map((t, i) => `
       <div class="sec-text-item">
         <textarea class="sec-text-area" data-sec="${escapeHtml(sec.key)}" data-idx="${i}" rows="3" placeholder="テキストを入力…">${escapeHtml(t)}</textarea>
-        <button class="sec-text-remove" data-sec="${escapeHtml(sec.key)}" data-idx="${i}" title="このテキストを削除">×</button>
+        <div class="sec-text-btns">
+          <button class="sec-text-expand" data-sec="${escapeHtml(sec.key)}" data-idx="${i}" title="拡大/縮小">⤢</button>
+          <button class="sec-text-remove" data-sec="${escapeHtml(sec.key)}" data-idx="${i}" title="このテキストを削除">×</button>
+        </div>
       </div>
     `).join("");
     return `
@@ -433,6 +436,17 @@ function renderSections(p) {
   // テキスト編集(フォーカスを外したら保存)
   wrap.querySelectorAll(".sec-text-area").forEach((ta) => {
     ta.addEventListener("blur", () => commitSectionText(ta.dataset.sec, parseInt(ta.dataset.idx), ta.value));
+  });
+  // テキスト拡大/縮小トグル(1クリックで大きく、もう1クリックで戻る)
+  wrap.querySelectorAll(".sec-text-expand").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = btn.closest(".sec-text-item");
+      const ta = item.querySelector(".sec-text-area");
+      const isExpanded = ta.classList.toggle("expanded");
+      btn.textContent = isExpanded ? "⤡" : "⤢";
+      btn.title = isExpanded ? "縮小" : "拡大";
+      if (isExpanded) ta.focus();
+    });
   });
 }
 
