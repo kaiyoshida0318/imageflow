@@ -26,12 +26,12 @@
   ],
   "sectionDefs": [
     {
-      "key": "top",
-      "label": "TOP画像"
-    },
-    {
       "key": "analysis",
       "label": "分析"
+    },
+    {
+      "key": "top",
+      "label": "TOP画像"
     }
   ]
 }
