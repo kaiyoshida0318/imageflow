@@ -322,7 +322,7 @@ function render() {
 
 // ---------- 商品詳細 ----------
 function closeAllModals() {
-  ["add-modal", "detail-modal", "section-mgr-modal", "lightbox"].forEach((id) => {
+  ["add-modal", "detail-modal", "section-mgr-modal", "text-fullscreen", "lightbox"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
@@ -461,17 +461,50 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-text-area").forEach((ta) => {
     ta.addEventListener("blur", () => commitSectionText(ta.dataset.sec, parseInt(ta.dataset.idx), ta.value));
   });
-  // テキスト拡大/縮小トグル(1クリックで大きく、もう1クリックで戻る)
+  // テキスト全画面エディタを開く
   wrap.querySelectorAll(".sec-text-expand").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const item = btn.closest(".sec-text-item");
-      const ta = item.querySelector(".sec-text-area");
-      const isExpanded = ta.classList.toggle("expanded");
-      btn.textContent = isExpanded ? "⤡" : "⤢";
-      btn.title = isExpanded ? "縮小" : "拡大";
-      if (isExpanded) ta.focus();
+      openTextFullscreen(btn.dataset.sec, parseInt(btn.dataset.idx));
     });
   });
+}
+
+// ---------- 全画面テキストエディタ ----------
+let fsEditing = null; // { key, idx }
+
+function openTextFullscreen(key, idx) {
+  const p = products.find((x) => x.id === currentDetailId);
+  if (!p) return;
+  const sec = getSection(p, key);
+  if (!sec || sec.texts[idx] === undefined) return;
+  fsEditing = { key, idx };
+  // 項目名をタイトルに
+  const def = sectionDefs.find((d) => d.key === key);
+  $("text-fullscreen-title").textContent = def ? def.label : "テキスト";
+  const area = $("text-fullscreen-area");
+  area.value = sec.texts[idx];
+  $("text-fullscreen").style.display = "flex";
+  setTimeout(() => area.focus(), 30);
+}
+
+async function closeTextFullscreen() {
+  if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
+  const p = products.find((x) => x.id === currentDetailId);
+  const { key, idx } = fsEditing;
+  const newVal = $("text-fullscreen-area").value.trim();
+  $("text-fullscreen").style.display = "none";
+  fsEditing = null;
+  if (!p) return;
+  const sec = getSection(p, key);
+  if (!sec || sec.texts[idx] === undefined) return;
+  if (sec.texts[idx] === newVal) { renderSections(p); return; }
+  sec.texts[idx] = newVal;
+  try {
+    await saveData(`Update text (fullscreen): ${p.name}`, mergeCurrentProduct(p));
+  } catch (err) {
+    alert("保存失敗: " + err.message);
+  }
+  renderSections(p);
 }
 
 function getSection(p, key) {
@@ -1157,6 +1190,16 @@ function bindEvents() {
 
   // ライトボックス(背景クリックで閉じる)
   $("lightbox").addEventListener("click", () => { $("lightbox").style.display = "none"; });
+
+  // 全画面テキストエディタ: 完了ボタン
+  $("text-fullscreen-close").addEventListener("click", closeTextFullscreen);
+  // Escで全画面エディタを閉じる(保存して)
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("text-fullscreen").style.display === "flex") {
+      e.preventDefault();
+      closeTextFullscreen();
+    }
+  });
 
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", (e) => e.preventDefault());
