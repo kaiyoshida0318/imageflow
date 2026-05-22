@@ -22,7 +22,9 @@
               "name": "reviews_20260514170419.csv"
             }
           ],
-          "question": "楽天で販売をしていて、ある商品のページのリニューアルをしようと思っている　こんな感じでレビューがあるんだけど、ここから、LPの構成案作成して"
+          "question": "楽天で販売をしていて、ある商品のページのリニューアルをしようと思っている　こんな感じでレビューがあるんだけど、ここから、LPの構成案作成して",
+          "imagesFinal": [],
+          "filesFinal": []
         },
         {
           "iid": "mpgmwoegg4c6hc",
@@ -30,9 +32,13 @@
           "texts": [
             "下記文章を元に750*1230の「こんなお悩みありませんか？」の画像を作成して\nお早見の画像だから、暗いトーンででつくって"
           ],
-          "images": [],
+          "images": [
+            "images/mpgdcx7n4zju50-mpgmwoegg4c6hc-material-1779440315341-1.png"
+          ],
           "question": "上記のお悩みを、構図としてはこの画像みたいな感じで作って　男性向けの商品だから、男性で作ってほしい",
-          "files": []
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
         },
         {
           "iid": "mpgmwoegfnhu00",
@@ -44,7 +50,9 @@
             "images/mpgdcx7n4zju50-sec-mpgkuwgd3bmk6w-1779433694380-1.png"
           ],
           "question": "文章の内容はこれで良いから、750*1230で3案くらい全く違うデザインで作って　まとめて解決へ！は含めないで",
-          "files": []
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
         }
       ]
     }
