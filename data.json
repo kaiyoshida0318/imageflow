@@ -13,20 +13,16 @@
           "key": "top",
           "label": "TOP画像",
           "texts": [
-            ""
+            "分析入力"
           ],
           "images": []
         },
         {
           "key": "analysis",
           "label": "分析",
-          "texts": [],
-          "images": []
-        },
-        {
-          "key": "plan",
-          "label": "構成案",
-          "texts": [],
+          "texts": [
+            ""
+          ],
           "images": []
         }
       ]
