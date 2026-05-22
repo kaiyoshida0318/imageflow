@@ -643,6 +643,32 @@ main { padding: 32px 40px 80px; }
   margin-top: 10px;
   min-height: 16px;
 }
+.auth-advanced {
+  margin: 4px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 0 12px;
+}
+.auth-advanced summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  padding: 10px 0;
+  list-style: none;
+  user-select: none;
+}
+.auth-advanced summary::-webkit-details-marker { display: none; }
+.auth-advanced summary::before {
+  content: "▸ ";
+  color: var(--ink-mute);
+}
+.auth-advanced[open] summary::before { content: "▾ "; }
+.auth-advanced summary:hover { color: var(--ink); }
+.auth-advanced .field-label:first-of-type { margin-top: 0; }
+.auth-advanced .field-label { margin-top: 12px; }
+.auth-advanced input { margin-bottom: 8px; }
 
 /* ========== FORM ========== */
 .field-label {
