@@ -2239,3 +2239,43 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: all 0.15s;
 }
 .sec-file-remove:hover { background: var(--danger); color: #fff; }
+
+/* ========== ImageFlow v3.0: 項目タイトルのインライン編集 ========== */
+.editor-section-title[data-iid] {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.editor-section-title[data-iid]:hover { color: var(--accent); }
+.sec-title-edit {
+  font-size: 11px;
+  opacity: 0.4;
+  font-weight: 400;
+}
+.editor-section-title[data-iid]:hover .sec-title-edit { opacity: 0.8; }
+.sec-title-input {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  padding: 4px 10px;
+  width: auto;
+  min-width: 200px;
+  background: #fff;
+}
+.sec-title-btns {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.sec-title-save, .sec-title-cancel, .sec-title-reset {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.sec-title-save { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sec-title-save:hover { background: var(--accent); border-color: var(--accent); }
+.sec-title-cancel:hover, .sec-title-reset:hover { background: var(--bg-2); color: var(--ink); }
