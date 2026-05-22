@@ -755,8 +755,8 @@ function renderSectionManager() {
     <div class="tag-mgr-item" data-key="${escapeHtml(def.key)}">
       <span class="tag-mgr-item-name">${escapeHtml(def.label)}</span>
       <span class="tag-mgr-item-count">${usage[def.key] || 0} 商品で使用</span>
-      ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">◀</button>` : '<span style="width:30px"></span>'}
-      ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▶</button>` : '<span style="width:30px"></span>'}
+      ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">▲</button>` : '<span style="width:30px"></span>'}
+      ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▼</button>` : '<span style="width:30px"></span>'}
       <button class="tag-mgr-btn" data-action="rename" data-key="${escapeHtml(def.key)}">名前変更</button>
       <button class="tag-mgr-btn danger" data-action="delete" data-key="${escapeHtml(def.key)}">削除</button>
     </div>
