@@ -506,7 +506,7 @@ function renderSections(p) {
   const wrap = $("editor-sections");
   if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
 
-  const sectionsHtml = p.sectionItems.map((item) => {
+  const sectionsHtml = p.sectionItems.map((item, secIdx) => {
     const def = sectionDefs.find((d) => d.key === item.key);
     const label = def ? def.label : (item.key || "項目");
     const imagesHtml = (item.images || []).map((path, i) => `
@@ -532,6 +532,8 @@ function renderSections(p) {
       <div class="editor-section-head">
         <h3 class="editor-section-title">${escapeHtml(label)}</h3>
         <div class="editor-section-actions">
+          <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
+          <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
           <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
           <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像</button>
           <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
@@ -616,6 +618,10 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionItem(btn.dataset.iid));
   });
+  // 項目の上下移動
+  wrap.querySelectorAll(".sec-move").forEach((btn) => {
+    btn.addEventListener("click", () => moveSectionItem(btn.dataset.iid, btn.dataset.dir === "up" ? -1 : 1));
+  });
   // +項目を追加
   $("sec-add-item-btn").addEventListener("click", toggleAddItemMenu);
 }
@@ -635,6 +641,24 @@ function toggleAddItemMenu() {
     });
   }
   menu.style.display = "block";
+}
+
+// 項目を上下に移動
+async function moveSectionItem(iid, delta) {
+  const p = getCurrentProduct();
+  if (!p || !Array.isArray(p.sectionItems)) return;
+  const idx = p.sectionItems.findIndex((it) => it.iid === iid);
+  if (idx === -1) return;
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= p.sectionItems.length) return;
+  const [item] = p.sectionItems.splice(idx, 1);
+  p.sectionItems.splice(newIdx, 0, item);
+  renderSections(p); // 先に画面反映(待たせない)
+  try {
+    await saveData(`Reorder section: ${p.name}`, mergeCurrentProduct(p));
+  } catch (err) {
+    alert("並べ替えの保存に失敗: " + err.message);
+  }
 }
 
 // 項目を追加(同じkeyを複数回でもOK)
