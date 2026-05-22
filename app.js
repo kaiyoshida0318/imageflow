@@ -828,7 +828,7 @@ function startEditQuestion(key) {
   item.innerHTML = `
     <textarea class="section-mgr-q-input" rows="2" placeholder="例: この商品の強み・弱みは？競合との違いは？">${escapeHtml(oldQ)}</textarea>
     <div class="section-mgr-q-btns">
-      <button class="tag-mgr-btn" data-action="q-confirm">OK</button>
+      <button class="tag-mgr-btn" data-action="q-confirm">💾 保存</button>
       <button class="tag-mgr-btn" data-action="q-cancel">キャンセル</button>
     </div>
   `;
@@ -1210,6 +1210,26 @@ function bindEvents() {
   $("section-mgr-add").addEventListener("click", addSectionDef);
   $("section-mgr-new-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addSectionDef(); }
+  });
+  // 項目管理: 保存して閉じる(質問文を編集中ならそれも保存)
+  $("section-mgr-close").addEventListener("click", async () => {
+    const input = document.querySelector("#section-mgr-list .section-mgr-q-input");
+    if (input) {
+      // 編集中の質問文を確定保存
+      const item = input.closest(".section-mgr-item");
+      const key = item ? item.dataset.key : null;
+      const def = sectionDefs.find((d) => d.key === key);
+      if (def) {
+        const newQ = input.value.trim();
+        if ((def.question || "") !== newQ) {
+          def.question = newQ || undefined;
+          try { await saveData(`Edit question: ${def.label}`); }
+          catch (err) { alert("保存失敗: " + err.message); return; }
+        }
+      }
+    }
+    $("section-mgr-modal").style.display = "none";
+    render();
   });
 
   // 商品情報インライン編集(blurで保存)
