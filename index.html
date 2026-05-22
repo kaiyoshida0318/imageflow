@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=1.8.1" />
+<link rel="stylesheet" href="style.css?v=1.9.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v1.8.1</span>
+    <span class="version-badge">v1.9.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -180,12 +180,23 @@
   </div>
 </div>
 
+<!-- 全画面テキストエディタ(分析欄の最大化) -->
+<div id="text-fullscreen" class="text-fullscreen" style="display:none">
+  <div class="text-fullscreen-inner">
+    <div class="text-fullscreen-head">
+      <span id="text-fullscreen-title" class="text-fullscreen-title">分析</span>
+      <button id="text-fullscreen-close" class="text-fullscreen-close">完了</button>
+    </div>
+    <textarea id="text-fullscreen-area" class="text-fullscreen-area" placeholder="テキストを入力…"></textarea>
+  </div>
+</div>
+
 <!-- セクション内アイテム拡大表示用(画像クリック) -->
 <div id="lightbox" class="lightbox" style="display:none">
   <img id="lightbox-img" alt="" />
 </div>
 
 
-<script src="app.js?v=1.8.1"></script>
+<script src="app.js?v=1.9.0"></script>
 </body>
 </html>
