@@ -484,7 +484,12 @@ function openTextFullscreen(key, idx) {
   const area = $("text-fullscreen-area");
   area.value = sec.texts[idx];
   $("text-fullscreen").style.display = "flex";
-  setTimeout(() => area.focus(), 30);
+  setTimeout(() => {
+    area.focus();
+    // カーソルとスクロールを先頭に戻す(文末に飛ばないように)
+    area.setSelectionRange(0, 0);
+    area.scrollTop = 0;
+  }, 30);
 }
 
 async function closeTextFullscreen() {
