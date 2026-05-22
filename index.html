@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=1.2.0" />
+<link rel="stylesheet" href="style.css?v=1.3.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v1.2.0</span>
+    <span class="version-badge">v1.3.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -118,34 +118,41 @@
       <button class="modal-close" data-close="detail-modal">×</button>
     </div>
 
-    <!-- 商品情報(その場編集) -->
-    <div class="editor-head">
-      <div class="editor-head-img" id="editor-head-img">
-        <img id="detail-img" alt="" />
-        <div id="detail-noimg" class="product-detail-noimg" style="display:none">画像なし</div>
-        <button id="editor-img-change" class="editor-img-change" title="画像を変更">画像を変更</button>
-        <input id="editor-img-input" type="file" accept="image/*" hidden />
-      </div>
-      <div class="editor-head-info">
+    <!-- 編集ページ本体: 左右2カラム -->
+    <div class="editor-layout">
+      <!-- 左カラム: 商品情報 -->
+      <div class="editor-col-left">
+        <div class="editor-head-img" id="editor-head-img">
+          <img id="detail-img" alt="" />
+          <div id="detail-noimg" class="product-detail-noimg" style="display:none">画像なし</div>
+          <button id="editor-img-change" class="editor-img-change" title="画像を変更">画像を変更</button>
+          <input id="editor-img-input" type="file" accept="image/*" hidden />
+        </div>
         <label class="field-label">スタート日付</label>
         <input id="edit-start-date" type="text" class="editor-inline-input" placeholder="例: 26-0522" />
         <label class="field-label">商品名</label>
         <input id="edit-product-name" type="text" class="editor-inline-input editor-name-input" placeholder="商品名" />
-
-        <label class="field-label">楽天レビューCSV</label>
-        <div id="editor-csv-row" class="editor-csv-row">
-          <a id="detail-csv-link" class="csv-download-link" href="#" download style="display:none">📄 <span id="detail-csv-name"></span></a>
-          <span id="editor-csv-none" class="editor-csv-none">未登録</span>
-          <button id="editor-csv-change" class="btn-secondary editor-csv-btn">CSVを設定</button>
-          <input id="editor-csv-input" type="file" accept=".csv,text/csv" hidden />
-        </div>
-
         <div id="editor-head-status" class="save-status"></div>
       </div>
-    </div>
 
-    <!-- セクション群(TOP画像・分析・楽天レビュー・構成案) -->
-    <div id="editor-sections" class="editor-sections"></div>
+      <!-- 右カラム: 楽天レビューCSV + セクション群 -->
+      <div class="editor-col-right">
+        <div class="editor-section">
+          <div class="editor-section-head">
+            <h3 class="editor-section-title">楽天レビュー(CSV)</h3>
+          </div>
+          <div id="editor-csv-row" class="editor-csv-row">
+            <a id="detail-csv-link" class="csv-download-link" href="#" download style="display:none">📄 <span id="detail-csv-name"></span></a>
+            <span id="editor-csv-none" class="editor-csv-none">未登録</span>
+            <button id="editor-csv-change" class="btn-secondary editor-csv-btn">CSVをインポート</button>
+            <input id="editor-csv-input" type="file" accept=".csv,text/csv" hidden />
+          </div>
+        </div>
+
+        <!-- セクション群(TOP画像・分析・構成案など) -->
+        <div id="editor-sections" class="editor-sections"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -155,6 +162,6 @@
 </div>
 
 
-<script src="app.js?v=1.2.0"></script>
+<script src="app.js?v=1.3.0"></script>
 </body>
 </html>
