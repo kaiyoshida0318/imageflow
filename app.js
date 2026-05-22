@@ -33,14 +33,16 @@ let dataSha = null;
 let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let currentDetailId = null;
-let viewMode = "card";  // "card" or "gallery"(画像一覧)
+let viewMode = (() => {
+  try { return localStorage.getItem("imageFlow.viewMode") === "gallery" ? "gallery" : "card"; }
+  catch { return "card"; }
+})();  // "card" or "gallery"(画像一覧)
 
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
 let manualSaving = false; // 手動保存ボタン処理中はblur自動保存をスキップ
 
 let pendingImage = null;
-let pendingCsv = null;
 
 // ---------- util ----------
 const $ = (id) => document.getElementById(id);
@@ -369,7 +371,6 @@ function renderCardView() {
     const imgArea = p.image
       ? `<div class="card-img"><img data-path="${escapeHtml(p.image)}" alt="" loading="lazy" /></div>`
       : `<div class="card-img card-noimg"><span>画像なし</span></div>`;
-    const csvBadge = p.csvPath ? `<span class="card-csv-badge">📄 CSV</span>` : "";
     return `
     <div class="card" data-id="${escapeHtml(p.id)}">
       ${imgArea}
@@ -377,7 +378,7 @@ function renderCardView() {
         <div class="card-start-date">${escapeHtml(p.startDate || "—")}</div>
         <h3 class="card-title">${escapeHtml(p.name || "無題")}</h3>
         <div class="card-meta">
-          <span>${csvBadge}</span>
+          <span></span>
           <span>${p.createdAt ? fmtDate(p.createdAt) : ""}</span>
         </div>
       </div>
@@ -431,6 +432,7 @@ function renderGalleryView() {
 // 表示モード切り替え
 function toggleViewMode() {
   viewMode = viewMode === "card" ? "gallery" : "card";
+  try { localStorage.setItem("imageFlow.viewMode", viewMode); } catch {}
   const btn = $("btn-view-toggle");
   btn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
   render();
@@ -471,38 +473,10 @@ function openDetail(id) {
     const hs = $("editor-head-status");
     if (hs) { hs.textContent = ""; hs.className = "save-status"; }
 
-    // CSV
-    refreshCsvRow(p);
-
     // セクション描画
     renderSections(p);
   } catch (err) {
     console.error("openDetailでエラー(モーダルは開いたまま継続):", err);
-  }
-}
-
-// CSV行の表示更新
-function refreshCsvRow(p) {
-  const link = $("detail-csv-link");
-  const none = $("editor-csv-none");
-  const nameEl = $("detail-csv-name");
-  if (!link || !none) return; // 要素が無ければ何もしない(安全策)
-  if (p.csvPath) {
-    none.style.display = "none";
-    link.style.display = "inline-flex";
-    if (nameEl) nameEl.textContent = "読み込み中…";
-    fetchAsBlobUrl(p.csvPath, false).then((url) => {
-      if (url) {
-        link.href = url;
-        link.download = p.csvName || "review.csv";
-        link.innerHTML = `📄 <span>${escapeHtml(p.csvName || "review.csv")}</span>`;
-      } else {
-        link.innerHTML = `📄 取得失敗`;
-      }
-    });
-  } else {
-    link.style.display = "none";
-    none.style.display = "inline";
   }
 }
 
@@ -1037,36 +1011,6 @@ async function changeProductImage(file) {
   }
 }
 
-// CSVの差し替え/設定
-async function changeProductCsv(file) {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p || !file) return;
-  const name = file.name.toLowerCase();
-  if (!name.endsWith(".csv") && file.type !== "text/csv") { alert("CSVファイルを選んでください"); return; }
-  if (file.size > 25 * 1024 * 1024) { alert("CSVが大きすぎます(25MB超)。"); return; }
-  try {
-    setHeadStatus("CSVをアップロード中…");
-    const base64 = await fileToBase64(file);
-    const safeName = file.name.replace(/[^\w.\-]/g, "_");
-    const newPath = `${CSV_DIR}/${p.id}-${safeName}`;
-    await uploadFile(newPath, base64, `Change csv: ${p.id}`);
-    if (p.csvPath && p.csvPath !== newPath) {
-      try { await deleteFile(p.csvPath, null, `Delete old csv: ${p.id}`); }
-      catch (e) { console.warn("旧CSV削除失敗(続行):", e); }
-    }
-    blobCache.delete(p.csvPath);
-    p.csvPath = newPath;
-    p.csvName = file.name;
-    await saveData(`Change csv: ${p.name}`, mergeCurrentProduct(p));
-    refreshCsvRow(p);
-    setHeadStatus("✓ CSVを更新しました", "ok");
-    setTimeout(() => setHeadStatus(""), 1200);
-    render();
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
 // 現在の商品を最新データにマージする関数を返す(競合対策)
 function mergeCurrentProduct(p) {
   return (latest) => latest.map((x) => x.id === p.id ? p : x);
@@ -1326,15 +1270,11 @@ async function deleteProduct() {
 // ---------- 追加(商品登録) ----------
 function resetAddForm() {
   pendingImage = null;
-  pendingCsv = null;
   $("preview-wrap").style.display = "none";
   $("dropzone").style.display = "block";
   $("file-input").value = "";
   $("input-start-date").value = todayShort();
   $("input-product-name").value = "";
-  $("csv-file-input").value = "";
-  $("csv-preview").style.display = "none";
-  $("csv-filename").textContent = "";
   $("save-status").textContent = "";
   $("save-status").className = "save-status";
 }
@@ -1361,28 +1301,6 @@ function handleImageFile(file) {
   reader.readAsDataURL(file);
 }
 
-function handleCsvFile(file) {
-  if (!file) return;
-  const name = file.name.toLowerCase();
-  if (!name.endsWith(".csv") && file.type !== "text/csv") {
-    alert("CSVファイルを選んでください");
-    return;
-  }
-  if (file.size > 25 * 1024 * 1024) {
-    alert("CSVが大きすぎます(25MB超)。");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    const base64 = dataUrl.split(",")[1];
-    pendingCsv = { base64, fileName: file.name };
-    $("csv-filename").textContent = file.name;
-    $("csv-preview").style.display = "flex";
-  };
-  reader.readAsDataURL(file);
-}
-
 async function saveProduct() {
   const startDate = $("input-start-date").value.trim();
   const name = $("input-product-name").value.trim();
@@ -1403,25 +1321,13 @@ async function saveProduct() {
       await uploadFile(imgPath, pendingImage.base64, `Add product image: ${id}`);
     }
 
-    let csvPath = undefined;
-    let csvName = undefined;
-    if (pendingCsv) {
-      $("save-status").textContent = "CSVをアップロード中…";
-      const safeName = pendingCsv.fileName.replace(/[^\w.\-]/g, "_");
-      csvPath = `${CSV_DIR}/${id}-${safeName}`;
-      csvName = pendingCsv.fileName;
-      await uploadFile(csvPath, pendingCsv.base64, `Add product csv: ${id}`);
-    }
-
     $("save-status").textContent = "メタデータを保存中…";
     const product = {
       id,
       name,
       startDate,
       image: imgPath,
-      csvPath,
-      csvName,
-      sectionItems: sectionDefs.map((def) => ({ iid: genId(), key: def.key, texts: [], images: [] })),
+      sectionItems: sectionDefs.map((def) => ({ iid: genId(), key: def.key, texts: [], images: [], files: [] })),
       createdAt: new Date().toISOString()
     };
 
@@ -1515,26 +1421,6 @@ function bindEvents() {
     $("file-input").value = "";
   });
 
-  const csvDz = $("csv-dropzone");
-  csvDz.addEventListener("click", () => $("csv-file-input").click());
-  csvDz.addEventListener("dragover", (e) => { e.preventDefault(); csvDz.classList.add("drag"); });
-  csvDz.addEventListener("dragleave", () => csvDz.classList.remove("drag"));
-  csvDz.addEventListener("drop", (e) => {
-    e.preventDefault();
-    csvDz.classList.remove("drag");
-    handleCsvFile(e.dataTransfer.files[0]);
-  });
-  $("csv-file-input").addEventListener("change", (e) => {
-    handleCsvFile(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("csv-clear").addEventListener("click", () => {
-    pendingCsv = null;
-    $("csv-preview").style.display = "none";
-    $("csv-filename").textContent = "";
-    $("csv-file-input").value = "";
-  });
-
   $("btn-save").addEventListener("click", saveProduct);
   $("btn-delete").addEventListener("click", deleteProduct);
   // ×(保存): 保存してから閉じる
@@ -1585,13 +1471,6 @@ function bindEvents() {
     e.target.value = "";
   });
 
-  // CSVの設定/差し替え
-  $("editor-csv-change").addEventListener("click", () => $("editor-csv-input").click());
-  $("editor-csv-input").addEventListener("change", (e) => {
-    if (e.target.files[0]) changeProductCsv(e.target.files[0]);
-    e.target.value = "";
-  });
-
   // ライトボックス(背景クリックで閉じる)
   $("lightbox").addEventListener("click", () => { $("lightbox").style.display = "none"; });
 
@@ -1613,6 +1492,9 @@ function bindEvents() {
 async function init() {
   $("loading").style.display = "block";
   $("gallery").innerHTML = "";
+  // 保存された表示モードに合わせてボタン文言を設定
+  const vbtn = $("btn-view-toggle");
+  if (vbtn) vbtn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
   try {
     await loadData();
     render();
