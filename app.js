@@ -43,6 +43,10 @@ let galleryThumb = (() => {
   try { return localStorage.getItem("imageFlow.galleryThumb") === "tall" ? "tall" : "square"; }
   catch { return "square"; }
 })();  // "square"(正方形) or "tall"(縦長 750x1230)
+let galleryExcludeMaterial = (() => {
+  try { return localStorage.getItem("imageFlow.galleryExcludeMaterial") === "1"; }
+  catch { return false; }
+})();  // true: 素材を除外(メイン画像+完成品のみ)
 
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
@@ -339,12 +343,12 @@ async function verifyAuth(a) {
 
 // ---------- レンダリング(商品一覧) ----------
 // 商品の全画像パスを集める(商品画像 + 各項目の画像)
-function collectAllImages(p) {
+function collectAllImages(p, excludeMaterial) {
   const imgs = [];
   if (p.image) imgs.push(p.image);
   if (Array.isArray(p.sectionItems)) {
     for (const item of p.sectionItems) {
-      if (item.images) imgs.push(...item.images);
+      if (!excludeMaterial && item.images) imgs.push(...item.images);
       if (item.imagesFinal) imgs.push(...item.imagesFinal);
     }
   }
@@ -409,7 +413,7 @@ function renderGalleryView() {
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   gallery.innerHTML = sorted.map((p) => {
-    const imgs = collectAllImages(p);
+    const imgs = collectAllImages(p, galleryExcludeMaterial);
     const thumbsHtml = imgs.length
       ? imgs.map((path) => `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`).join("")
       : '<span class="row-noimg">画像なし</span>';
@@ -451,15 +455,30 @@ function toggleViewMode() {
 // サムネ高さボタンの表示/非表示(画像一覧のときだけ出す)
 function updateThumbToggleVisibility() {
   const tb = $("btn-thumb-toggle");
-  if (!tb) return;
-  tb.style.display = (viewMode === "gallery") ? "" : "none";
-  tb.textContent = galleryThumb === "tall" ? "🔲 正方形表示" : "📐 縦長表示";
+  if (tb) {
+    tb.style.display = (viewMode === "gallery") ? "" : "none";
+    tb.textContent = galleryThumb === "tall" ? "🔲 正方形表示" : "📐 縦長表示";
+  }
+  const eb = $("btn-exclude-material");
+  if (eb) {
+    eb.style.display = (viewMode === "gallery") ? "" : "none";
+    eb.textContent = galleryExcludeMaterial ? "✅ 素材を表示" : "🚫 素材除外";
+    eb.classList.toggle("active", galleryExcludeMaterial);
+  }
 }
 
 // サムネ高さの切り替え(正方形 ⇔ 縦長)
 function toggleThumbMode() {
   galleryThumb = galleryThumb === "square" ? "tall" : "square";
   try { localStorage.setItem("imageFlow.galleryThumb", galleryThumb); } catch {}
+  updateThumbToggleVisibility();
+  render();
+}
+
+// 素材除外の切り替え
+function toggleExcludeMaterial() {
+  galleryExcludeMaterial = !galleryExcludeMaterial;
+  try { localStorage.setItem("imageFlow.galleryExcludeMaterial", galleryExcludeMaterial ? "1" : "0"); } catch {}
   updateThumbToggleVisibility();
   render();
 }
@@ -1572,6 +1591,7 @@ function bindEvents() {
   // 表示モード切り替え
   $("btn-view-toggle").addEventListener("click", toggleViewMode);
   $("btn-thumb-toggle").addEventListener("click", toggleThumbMode);
+  $("btn-exclude-material").addEventListener("click", toggleExcludeMaterial);
   $("section-mgr-add").addEventListener("click", addSectionDef);
   $("section-mgr-new-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addSectionDef(); }
