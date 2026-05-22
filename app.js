@@ -421,6 +421,7 @@ function renderSections(p) {
           <input type="file" class="sec-img-input" data-sec="${escapeHtml(def.key)}" accept="image/*" multiple hidden />
         </div>
       </div>
+      ${def.question ? `<div class="sec-question">💬 ${escapeHtml(def.question)}</div>` : ''}
       <div class="sec-images">${imagesHtml || '<span class="sec-empty">画像なし</span>'}</div>
       <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
     </div>`;
@@ -790,13 +791,17 @@ function renderSectionManager() {
   });
 
   list.innerHTML = sectionDefs.map((def, i) => `
-    <div class="tag-mgr-item" data-key="${escapeHtml(def.key)}">
-      <span class="tag-mgr-item-name">${escapeHtml(def.label)}</span>
-      <span class="tag-mgr-item-count">${usage[def.key] || 0} 商品で使用</span>
-      ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">▲</button>` : '<span style="width:30px"></span>'}
-      ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▼</button>` : '<span style="width:30px"></span>'}
-      <button class="tag-mgr-btn" data-action="rename" data-key="${escapeHtml(def.key)}">名前変更</button>
-      <button class="tag-mgr-btn danger" data-action="delete" data-key="${escapeHtml(def.key)}">削除</button>
+    <div class="tag-mgr-item section-mgr-item" data-key="${escapeHtml(def.key)}">
+      <div class="section-mgr-main">
+        <span class="tag-mgr-item-name">${escapeHtml(def.label)}</span>
+        <span class="tag-mgr-item-count">${usage[def.key] || 0} 商品で使用</span>
+        ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">▲</button>` : '<span style="width:30px"></span>'}
+        ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▼</button>` : '<span style="width:30px"></span>'}
+        <button class="tag-mgr-btn" data-action="question" data-key="${escapeHtml(def.key)}">質問文編集</button>
+        <button class="tag-mgr-btn" data-action="rename" data-key="${escapeHtml(def.key)}">名前変更</button>
+        <button class="tag-mgr-btn danger" data-action="delete" data-key="${escapeHtml(def.key)}">削除</button>
+      </div>
+      <div class="section-mgr-question">${def.question ? '💬 ' + escapeHtml(def.question) : '<span class="section-mgr-noq">質問文なし</span>'}</div>
     </div>
   `).join("");
 
@@ -807,9 +812,43 @@ function renderSectionManager() {
       if (action === "up") moveSectionDef(key, -1);
       else if (action === "down") moveSectionDef(key, 1);
       else if (action === "rename") startRenameSectionDef(key);
+      else if (action === "question") startEditQuestion(key);
       else if (action === "delete") deleteSectionDef(key);
     });
   });
+}
+
+// 質問文の編集
+function startEditQuestion(key) {
+  const def = sectionDefs.find((d) => d.key === key);
+  if (!def) return;
+  const item = document.querySelector(`#section-mgr-list .section-mgr-item[data-key="${CSS.escape(key)}"] .section-mgr-question`);
+  if (!item) return;
+  const oldQ = def.question || "";
+  item.innerHTML = `
+    <textarea class="section-mgr-q-input" rows="2" placeholder="例: この商品の強み・弱みは？競合との違いは？">${escapeHtml(oldQ)}</textarea>
+    <div class="section-mgr-q-btns">
+      <button class="tag-mgr-btn" data-action="q-confirm">OK</button>
+      <button class="tag-mgr-btn" data-action="q-cancel">キャンセル</button>
+    </div>
+  `;
+  const input = item.querySelector(".section-mgr-q-input");
+  input.focus();
+  const confirm = async () => {
+    const newQ = input.value.trim();
+    if (newQ === oldQ) { renderSectionManager(); return; }
+    try {
+      def.question = newQ || undefined;
+      await saveData(`Edit question: ${def.label}`);
+      renderSectionManager();
+    } catch (err) {
+      alert("保存失敗: " + err.message);
+      def.question = oldQ || undefined;
+      renderSectionManager();
+    }
+  };
+  item.querySelector('[data-action="q-confirm"]').addEventListener("click", confirm);
+  item.querySelector('[data-action="q-cancel"]').addEventListener("click", renderSectionManager);
 }
 
 async function moveSectionDef(key, delta) {
