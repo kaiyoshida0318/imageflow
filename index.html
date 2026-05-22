@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ImageFlow</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42'%3E%3Crect x='3' y='3' width='36' height='36' rx='4' fill='none' stroke='%231b1a17' stroke-width='2'/%3E%3Cpath d='M21 11 L22.8 19.2 L31 21 L22.8 22.8 L21 31 L19.2 22.8 L11 21 L19.2 19.2 Z' fill='%23c8451c'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css?v=1.0.0" />
+</head>
+<body>
+
+<!-- ============== 認証モーダル ============== -->
+<div id="auth-modal" class="modal auth-modal">
+  <div class="modal-inner">
+    <div class="auth-badge">— INITIAL SETUP —</div>
+    <h2>Welcome to ImageFlow</h2>
+    <p class="auth-desc">GitHub Personal Access Tokenを入力してください。トークンはブラウザ内にのみ保存され、GitHubへ直接通信します。</p>
+    <label class="field-label">GitHub Username</label>
+    <input id="input-owner" type="text" placeholder="your-github-username" />
+    <label class="field-label">Repository Name</label>
+    <input id="input-repo" type="text" placeholder="imageflow" />
+    <label class="field-label">Branch</label>
+    <input id="input-branch" type="text" placeholder="main" value="main" />
+    <label class="field-label">Personal Access Token</label>
+    <input id="input-token" type="password" placeholder="ghp_xxxxxxxxxxxx" />
+    <p class="auth-help">
+      → Settings → Developer settings → Personal access tokens → Fine-grained tokens<br />
+      対象リポジトリに Contents: Read and write 権限を付与
+    </p>
+    <button id="auth-save" class="btn-primary">接続する</button>
+    <div id="auth-error" class="auth-error"></div>
+  </div>
+</div>
+
+<!-- ============== ヘッダー ============== -->
+<header class="site-header">
+  <div class="header-left">
+    <span id="logo-link" class="logo-title" style="cursor:pointer" title="ホーム(全て)に戻る">ImageFlow</span>
+  </div>
+  <div class="header-right">
+    <span class="version-badge">v1.0.0</span>
+    <div class="stat">
+      <span class="stat-num" id="stat-count">0</span>
+      <span class="stat-label">items</span>
+    </div>
+    <button id="btn-add" class="btn-add">+ Add</button>
+    <button id="btn-cat-mgr" class="btn-secondary btn-header" title="商品の追加・編集・削除">📦 商品管理</button>
+    <button id="btn-head-mgr" class="btn-secondary btn-header" title="データ種別の追加・編集・削除">📑 データ種別管理</button>
+    <button id="btn-tag-mgr" class="btn-secondary btn-header" title="素材タグの追加・編集・削除">🏷️ 素材タグ管理</button>
+    <button id="btn-settings" class="btn-icon" title="接続設定">⚙</button>
+  </div>
+</header>
+
+<!-- ============== タブバー(商品) ============== -->
+<nav class="tab-bar">
+  <div id="tab-list" class="tab-list"></div>
+  <button id="btn-add-tab" class="btn-tab-add" title="新しい商品を追加">+</button>
+</nav>
+
+<!-- 検索バーは隠しinputとして保持(互換) -->
+<input id="search-input" type="hidden" value="" />
+
+<!-- ============== メイン ============== -->
+<main>
+  <div id="loading" class="state-msg">読み込み中…</div>
+  <div id="empty-state" class="state-msg" style="display:none">
+    <div class="empty-illust">◇ ◆ ◇</div>
+    <p>まだデータがありません。右上の <b>+ Add</b> から追加しましょう。</p>
+  </div>
+  <div id="gallery" class="gallery"></div>
+</main>
+
+<!-- ============== 追加モーダル ============== -->
+<div id="add-modal" class="modal" style="display:none">
+  <div class="modal-inner extra-wide">
+    <button class="modal-close" data-close="add-modal">×</button>
+    <h2>New Entry</h2>
+
+    <div class="form-grid">
+      <div class="form-left">
+        <label class="field-label">メイン画像</label>
+        <div id="dropzone" class="dropzone">
+          <div class="dz-icon">⇪</div>
+          <div class="dz-text">画像をドラッグ&ドロップ<br /><span>またはクリックしてファイル選択</span></div>
+          <input id="file-input" type="file" accept="image/*" hidden />
+        </div>
+        <div id="preview-wrap" class="preview-wrap" style="display:none">
+          <img id="preview-img" alt="preview" />
+          <button id="preview-clear">別の画像を選ぶ</button>
+        </div>
+
+        <label class="field-label">または、画像不使用時の文章(分析・レビュー・構成案など)</label>
+        <textarea id="input-main-text" rows="4" placeholder="画像の代わりにカードに表示する文章。分析結果・楽天レビュー・構成案などのテキストデータを貼り付け"></textarea>
+        <p class="field-hint" style="margin-top:4px">※ メイン画像か文章のいずれかを入れてください。両方入れた場合は画像が優先されます。</p>
+
+        <label class="field-label">サブ画像(複数OK)</label>
+        <div id="sub-dropzone" class="dropzone sub-dropzone">
+          <div class="dz-icon" style="font-size:22px">+</div>
+          <div class="dz-text" style="font-size:12px">ドラッグ&ドロップで追加<br /><span>同案のバリエーション</span></div>
+          <input id="sub-file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div id="sub-preview-list" class="sub-preview-list"></div>
+
+        <label class="field-label">素材画像(商品画像・参考画像など)</label>
+        <div id="material-dropzone" class="dropzone sub-dropzone">
+          <div class="dz-icon" style="font-size:22px">+</div>
+          <div class="dz-text" style="font-size:12px">ドラッグ&ドロップで追加<br /><span>商品写真・元素材など</span></div>
+          <input id="material-file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div id="material-preview-list" class="sub-preview-list"></div>
+      </div>
+
+      <div class="form-right">
+        <label class="field-label">データ種別</label>
+        <select id="input-title-header-id" class="select-input">
+          <option value="">— 種別なし —</option>
+        </select>
+
+        <label class="field-label">タイトル</label>
+        <input id="input-title" type="text" placeholder="例: TOP画像案A、分析メモ・競合比較(任意)" />
+
+        <label class="field-label">所属商品</label>
+        <select id="input-tab-id" class="select-input">
+          <option value="">— 未設定(全てに表示)—</option>
+        </select>
+
+        <label class="field-label">素材データ</label>
+        <div id="input-tags-wrap" class="tag-picker-wrap">
+          <div id="input-tags-selected" class="tag-picker-selected"></div>
+          <button type="button" id="input-tags-toggle" class="tag-picker-toggle">+ 素材データを選ぶ</button>
+          <div id="input-tags-popup" class="tag-picker-popup" style="display:none">
+            <div id="input-tags-options" class="tag-picker-options"></div>
+            <p class="field-hint" style="margin:8px 0 0">素材データを増やすには右上の <b>🏷️ 素材タグ管理</b> ボタンから追加してください。</p>
+          </div>
+        </div>
+
+        <label class="field-label">プロンプト / メモ</label>
+        <textarea id="input-prompt" rows="10" placeholder="生成に使用したプロンプト、または分析・構成案などの詳細メモを貼り付け"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="add-modal">キャンセル</button>
+      <button id="btn-save" class="btn-primary">保存してコミット</button>
+    </div>
+    <div id="save-status" class="save-status"></div>
+  </div>
+</div>
+
+<!-- ============== 詳細モーダル ============== -->
+<div id="detail-modal" class="modal" style="display:none">
+  <div class="modal-inner detail">
+    <div class="detail-top-actions">
+      <button id="btn-edit" class="btn-secondary">編集</button>
+      <button id="btn-delete" class="btn-danger">削除</button>
+      <button class="modal-close" data-close="detail-modal">×</button>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-img-wrap">
+        <img id="detail-img" alt="" />
+        <div id="detail-text-main" class="detail-text-main" style="display:none"></div>
+      </div>
+      <div class="detail-info">
+        <h3 id="detail-title" class="detail-title" style="display:none"></h3>
+        <div class="detail-meta">
+          <span id="detail-date" class="date"></span>
+        </div>
+
+        <div id="sub-images-section" style="display:none">
+          <div class="section-label"><span>サブ画像</span></div>
+          <div id="detail-sub-images" class="detail-sub-images"></div>
+        </div>
+
+        <div id="material-images-section" style="display:none">
+          <div class="section-label"><span>素材画像</span></div>
+          <div id="detail-material-images" class="detail-sub-images"></div>
+        </div>
+
+        <div id="category-section" style="display:none">
+          <div class="section-label"><span>所属商品</span></div>
+          <div id="detail-category-name" class="detail-category-name"></div>
+        </div>
+
+        <div id="tags-section" style="display:none">
+          <div class="section-label"><span>素材データ</span></div>
+          <div id="detail-tags" class="detail-tags"></div>
+        </div>
+
+        <div id="prompt-section" style="display:none">
+          <div class="section-label">
+            <span>プロンプト / メモ</span>
+            <button id="copy-prompt" class="btn-copy">copy</button>
+          </div>
+          <pre id="detail-prompt" class="prompt-box prompt-box-scroll"></pre>
+        </div>
+
+        <div id="negative-section" style="display:none">
+          <div class="section-label">
+            <span>NEGATIVE</span>
+            <button id="copy-negative" class="btn-copy">copy</button>
+          </div>
+          <pre id="detail-negative" class="prompt-box"></pre>
+        </div>
+
+        <div id="note-section" style="display:none">
+          <div class="section-label"><span>NOTE</span></div>
+          <p id="detail-note" class="note-text"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== 編集モーダル ============== -->
+<div id="edit-modal" class="modal" style="display:none">
+  <div class="modal-inner extra-wide">
+    <button class="modal-close" data-close="edit-modal">×</button>
+    <h2>Edit Entry</h2>
+
+    <div class="form-grid">
+      <div class="form-left">
+        <label class="field-label">メイン画像(変更不可)</label>
+        <div class="edit-preview">
+          <img id="edit-preview-img" alt="" />
+          <p class="edit-preview-note">※ 画像の変更はできません。変更したい場合は削除して新規登録してください。</p>
+        </div>
+
+        <label class="field-label">画像不使用時の文章</label>
+        <textarea id="edit-main-text" rows="4" placeholder="画像の代わりにカードに表示する文章(画像なしエントリーで使用)"></textarea>
+        <p class="field-hint" style="margin-top:4px">※ メイン画像があるエントリーでは表示されません。</p>
+
+        <label class="field-label">サブ画像(複数OK)</label>
+        <div id="edit-sub-dropzone" class="dropzone sub-dropzone">
+          <div class="dz-icon" style="font-size:22px">+</div>
+          <div class="dz-text" style="font-size:12px">ドラッグ&ドロップで追加<br /><span>同案のバリエーション</span></div>
+          <input id="edit-sub-file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div id="edit-sub-preview-list" class="sub-preview-list"></div>
+
+        <label class="field-label">素材画像(商品画像・参考画像など)</label>
+        <div id="edit-material-dropzone" class="dropzone sub-dropzone">
+          <div class="dz-icon" style="font-size:22px">+</div>
+          <div class="dz-text" style="font-size:12px">ドラッグ&ドロップで追加<br /><span>商品写真・元素材など</span></div>
+          <input id="edit-material-file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div id="edit-material-preview-list" class="sub-preview-list"></div>
+      </div>
+
+      <div class="form-right">
+        <label class="field-label">データ種別</label>
+        <select id="edit-title-header-id" class="select-input">
+          <option value="">— 種別なし —</option>
+        </select>
+
+        <label class="field-label">タイトル</label>
+        <input id="edit-title" type="text" placeholder="例: TOP画像案A、分析メモ・競合比較(任意)" />
+
+        <label class="field-label">所属商品</label>
+        <select id="edit-tab-id" class="select-input">
+          <option value="">— 未設定(全てに表示)—</option>
+        </select>
+
+        <label class="field-label">素材データ</label>
+        <div id="edit-tags-wrap" class="tag-picker-wrap">
+          <div id="edit-tags-selected" class="tag-picker-selected"></div>
+          <button type="button" id="edit-tags-toggle" class="tag-picker-toggle">+ 素材データを選ぶ</button>
+          <div id="edit-tags-popup" class="tag-picker-popup" style="display:none">
+            <div id="edit-tags-options" class="tag-picker-options"></div>
+            <p class="field-hint" style="margin:8px 0 0">素材データを増やすには右上の <b>🏷️ 素材タグ管理</b> ボタンから追加してください。</p>
+          </div>
+        </div>
+
+        <label class="field-label">プロンプト / メモ</label>
+        <textarea id="edit-prompt" rows="10" placeholder="生成に使用したプロンプト、または詳細メモ"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="edit-modal">キャンセル</button>
+      <button id="btn-update" class="btn-primary">更新する</button>
+    </div>
+    <div id="edit-status" class="save-status"></div>
+  </div>
+</div>
+
+<!-- ============== 商品編集モーダル ============== -->
+<div id="tab-edit-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="tab-edit-modal">×</button>
+    <h2 id="tab-edit-title">商品を編集</h2>
+
+    <label class="field-label">アイコン(絵文字)</label>
+    <input id="tab-edit-icon" type="text" maxlength="4" placeholder="📦 など 1文字" />
+    <div class="icon-suggestions">
+      <span class="icon-chip" data-icon="📦">📦</span>
+      <span class="icon-chip" data-icon="🖼️">🖼️</span>
+      <span class="icon-chip" data-icon="🎨">🎨</span>
+      <span class="icon-chip" data-icon="✨">✨</span>
+      <span class="icon-chip" data-icon="📸">📸</span>
+      <span class="icon-chip" data-icon="🎯">🎯</span>
+      <span class="icon-chip" data-icon="💡">💡</span>
+      <span class="icon-chip" data-icon="🔥">🔥</span>
+      <span class="icon-chip" data-icon="⭐">⭐</span>
+      <span class="icon-chip" data-icon="🏷️">🏷️</span>
+      <span class="icon-chip" data-icon="🛍️">🛍️</span>
+      <span class="icon-chip" data-icon="📝">📝</span>
+    </div>
+
+    <label class="field-label">商品名 <span class="required">*</span></label>
+    <input id="tab-edit-name" type="text" placeholder="例: ○○サプリ、△△化粧水" />
+
+    <div class="modal-actions">
+      <button id="btn-tab-delete" class="btn-danger" style="margin-right:auto">この商品を削除</button>
+      <button class="btn-secondary" data-close="tab-edit-modal">キャンセル</button>
+      <button id="btn-tab-save" class="btn-primary">保存</button>
+    </div>
+    <p class="field-hint" style="margin-top:14px">※ 商品を削除しても、中のデータは削除されません(「全て」で見られます)。</p>
+  </div>
+</div>
+
+<!-- ============== 素材タグ管理モーダル ============== -->
+<div id="tag-mgr-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="tag-mgr-modal">×</button>
+    <h2>素材タグ管理</h2>
+    <p class="auth-desc" style="margin-bottom:16px">編集画面で使える素材データを管理します。</p>
+
+    <label class="field-label">新しい素材データを追加</label>
+    <div style="display:flex; gap:8px">
+      <input id="tag-mgr-new-name" type="text" placeholder="例: ライバル画像、参考写真、ロゴ素材" />
+      <button id="tag-mgr-add" class="btn-primary" style="margin:0; flex-shrink:0">追加</button>
+    </div>
+
+    <label class="field-label" style="margin-top:24px">登録済み素材データ</label>
+    <div id="tag-mgr-list" class="tag-mgr-list"></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="tag-mgr-modal">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== 商品管理モーダル ============== -->
+<div id="cat-mgr-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="cat-mgr-modal">×</button>
+    <h2>商品管理</h2>
+    <p class="auth-desc" style="margin-bottom:16px">タブとして表示される商品を管理します。順番の入れ替え・名前変更・削除ができます。</p>
+
+    <label class="field-label">新しい商品を追加</label>
+    <div style="display:flex; gap:8px">
+      <input id="cat-mgr-new-icon" type="text" maxlength="4" placeholder="📦" style="width:60px; text-align:center; flex-shrink:0" />
+      <input id="cat-mgr-new-name" type="text" placeholder="例: ○○サプリ、△△化粧水" />
+      <button id="cat-mgr-add" class="btn-primary" style="margin:0; flex-shrink:0">追加</button>
+    </div>
+    <div class="icon-suggestions" style="margin-top:6px">
+      <span class="icon-chip" data-cat-icon="📦">📦</span>
+      <span class="icon-chip" data-cat-icon="🖼️">🖼️</span>
+      <span class="icon-chip" data-cat-icon="🎨">🎨</span>
+      <span class="icon-chip" data-cat-icon="✨">✨</span>
+      <span class="icon-chip" data-cat-icon="📸">📸</span>
+      <span class="icon-chip" data-cat-icon="🎯">🎯</span>
+      <span class="icon-chip" data-cat-icon="💡">💡</span>
+      <span class="icon-chip" data-cat-icon="🔥">🔥</span>
+      <span class="icon-chip" data-cat-icon="⭐">⭐</span>
+      <span class="icon-chip" data-cat-icon="🏷️">🏷️</span>
+      <span class="icon-chip" data-cat-icon="🛍️">🛍️</span>
+      <span class="icon-chip" data-cat-icon="📝">📝</span>
+    </div>
+
+    <label class="field-label" style="margin-top:24px">登録済み商品(◀▶で並び替え)</label>
+    <div id="cat-mgr-list" class="tag-mgr-list"></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="cat-mgr-modal">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== データ種別管理モーダル ============== -->
+<div id="head-mgr-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="head-mgr-modal">×</button>
+    <h2>データ種別管理</h2>
+    <p class="auth-desc" style="margin-bottom:16px">カードに表示される「データ種別」ラベルを管理します。<br />TOP画像・分析・楽天レビュー・構成案 などを色分けして登録できます。<br />カードのタイトルは「種別 タイトル」の形式で連結されます。</p>
+
+    <label class="field-label">新しい種別を追加</label>
+    <div style="display:flex; gap:8px">
+      <input id="head-mgr-new-name" type="text" placeholder="例: TOP画像、分析、楽天レビュー、構成案" />
+      <button id="head-mgr-add" class="btn-primary" style="margin:0; flex-shrink:0">追加</button>
+    </div>
+    <p class="field-hint" style="margin-top:6px">色は追加後に「色変更」から指定できます。</p>
+
+    <label class="field-label" style="margin-top:24px">登録済み種別</label>
+    <div id="head-mgr-list" class="tag-mgr-list"></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="head-mgr-modal">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=1.0.0"></script>
+</body>
+</html>
