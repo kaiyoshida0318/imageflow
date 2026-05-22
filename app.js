@@ -524,6 +524,37 @@ async function removeSectionImage(key, idx) {
   }
 }
 
+// ---------- 手動保存(右上の保存ボタン) ----------
+async function saveAllCurrent() {
+  const p = products.find((x) => x.id === currentDetailId);
+  if (!p) return;
+  const btn = $("btn-save-product");
+  const name = $("edit-product-name").value.trim();
+  const startDate = $("edit-start-date").value.trim();
+  if (!name) { alert("商品名は空にできません"); return; }
+  p.name = name;
+  p.startDate = startDate;
+  document.querySelectorAll(".sec-text-area").forEach((ta) => {
+    const sec = getSection(p, ta.dataset.sec);
+    const idx = parseInt(ta.dataset.idx);
+    if (sec && sec.texts[idx] !== undefined) {
+      sec.texts[idx] = ta.value.trim();
+    }
+  });
+  try {
+    btn.disabled = true;
+    btn.textContent = "保存中…";
+    await saveData(`Save product: ${p.name}`, mergeCurrentProduct(p));
+    btn.textContent = "✓ 保存しました";
+    render();
+    setTimeout(() => { btn.textContent = "保存"; btn.disabled = false; }, 1000);
+  } catch (err) {
+    alert("保存失敗: " + err.message);
+    btn.textContent = "保存";
+    btn.disabled = false;
+  }
+}
+
 // ---------- 商品情報インライン編集 ----------
 function setHeadStatus(msg, kind) {
   const el = $("editor-head-status");
@@ -881,6 +912,7 @@ function bindEvents() {
 
   $("btn-save").addEventListener("click", saveProduct);
   $("btn-delete").addEventListener("click", deleteProduct);
+  $("btn-save-product").addEventListener("click", saveAllCurrent);
 
   // 商品情報インライン編集(blurで保存)
   $("edit-product-name").addEventListener("blur", (e) => commitProductField("name", e.target.value));
