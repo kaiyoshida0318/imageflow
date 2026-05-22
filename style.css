@@ -2349,3 +2349,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   object-fit: contain;
   background: var(--bg-2);
 }
+
+/* ========== ImageFlow v3.3: 素材除外ボタン ========== */
+.btn-header.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
