@@ -334,40 +334,47 @@ function openDetail(id) {
   closeAllModals();
   currentDetailId = id;
 
-  // 商品画像
-  if (p.image) {
-    $("detail-img").style.display = "";
-    $("detail-noimg").style.display = "none";
-    $("detail-img").src = "";
-    loadImageInto($("detail-img"), p.image);
-  } else {
-    $("detail-img").style.display = "none";
-    $("detail-noimg").style.display = "flex";
-  }
-
-  // 商品情報(インライン編集の初期値)
-  $("edit-start-date").value = p.startDate || "";
-  $("edit-product-name").value = p.name || "";
-  $("editor-head-status").textContent = "";
-  $("editor-head-status").className = "save-status";
-
-  // CSV
-  refreshCsvRow(p);
-
-  // セクション描画
-  renderSections(p);
-
+  // モーダルは先に開く(途中でエラーが出ても開いた状態は保つ)
   $("detail-modal").style.display = "flex";
+
+  try {
+    // 商品画像
+    if (p.image) {
+      $("detail-img").style.display = "";
+      $("detail-noimg").style.display = "none";
+      $("detail-img").src = "";
+      loadImageInto($("detail-img"), p.image);
+    } else {
+      $("detail-img").style.display = "none";
+      $("detail-noimg").style.display = "flex";
+    }
+
+    // 商品情報(インライン編集の初期値)
+    $("edit-start-date").value = p.startDate || "";
+    $("edit-product-name").value = p.name || "";
+    const hs = $("editor-head-status");
+    if (hs) { hs.textContent = ""; hs.className = "save-status"; }
+
+    // CSV
+    refreshCsvRow(p);
+
+    // セクション描画
+    renderSections(p);
+  } catch (err) {
+    console.error("openDetailでエラー(モーダルは開いたまま継続):", err);
+  }
 }
 
 // CSV行の表示更新
 function refreshCsvRow(p) {
   const link = $("detail-csv-link");
   const none = $("editor-csv-none");
+  const nameEl = $("detail-csv-name");
+  if (!link || !none) return; // 要素が無ければ何もしない(安全策)
   if (p.csvPath) {
     none.style.display = "none";
     link.style.display = "inline-flex";
-    $("detail-csv-name").textContent = "読み込み中…";
+    if (nameEl) nameEl.textContent = "読み込み中…";
     fetchAsBlobUrl(p.csvPath, false).then((url) => {
       if (url) {
         link.href = url;
