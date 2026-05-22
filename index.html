@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=1.6.0" />
+<link rel="stylesheet" href="style.css?v=1.7.0" />
 </head>
 <body>
 
@@ -44,11 +44,12 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v1.6.0</span>
+    <span class="version-badge">v1.7.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
     </div>
+    <button id="btn-section-mgr" class="btn-secondary btn-header" title="項目の追加・編集・削除">📑 項目管理</button>
     <button id="btn-add" class="btn-add">+ Add</button>
     <button id="btn-settings" class="btn-icon" title="接続設定">⚙</button>
   </div>
@@ -159,12 +160,35 @@
   </div>
 </div>
 
+<!-- ============== 項目管理モーダル ============== -->
+<div id="section-mgr-modal" class="modal" style="display:none">
+  <div class="modal-inner">
+    <button class="modal-close" data-close="section-mgr-modal">×</button>
+    <h2>項目管理</h2>
+    <p class="auth-desc" style="margin-bottom:16px">全商品の編集ページに共通で並ぶ項目を管理します。追加・名前変更・削除・並び替えができます。<br />(楽天レビューCSVは別枠なので、ここには含まれません)</p>
+
+    <label class="field-label">新しい項目を追加</label>
+    <div style="display:flex; gap:8px">
+      <input id="section-mgr-new-name" type="text" placeholder="例: ラフ案、キャッチコピー、ターゲット分析" />
+      <button id="section-mgr-add" class="btn-primary" style="margin:0; flex-shrink:0">追加</button>
+    </div>
+
+    <label class="field-label" style="margin-top:24px">登録済み項目(◀▶で並び替え)</label>
+    <div id="section-mgr-list" class="tag-mgr-list"></div>
+    <p class="field-hint" style="margin-top:14px">※ 項目を削除すると、全商品のその項目の中身(テキスト・画像)も消えます。</p>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" data-close="section-mgr-modal">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- セクション内アイテム拡大表示用(画像クリック) -->
 <div id="lightbox" class="lightbox" style="display:none">
   <img id="lightbox-img" alt="" />
 </div>
 
 
-<script src="app.js?v=1.6.0"></script>
+<script src="app.js?v=1.7.0"></script>
 </body>
 </html>
