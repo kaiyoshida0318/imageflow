@@ -1935,3 +1935,16 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border: 1px solid var(--line);
 }
 .sec-q-cancel:hover { background: var(--bg-2); }
+
+/* ========== ImageFlow v2.2: 質問文を雛形に戻すボタン ========== */
+.sec-q-reset {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink-mute);
+  border: 1px solid var(--line);
+  transition: all 0.15s;
+}
+.sec-q-reset:hover { background: var(--bg-2); color: var(--ink); }
