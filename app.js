@@ -421,7 +421,11 @@ function renderSections(p) {
           <input type="file" class="sec-img-input" data-sec="${escapeHtml(def.key)}" accept="image/*" multiple hidden />
         </div>
       </div>
-      ${def.question ? `<div class="sec-question">💬 ${escapeHtml(def.question)}</div>` : ''}
+      <div class="sec-question-wrap" data-sec="${escapeHtml(def.key)}">
+        ${def.question
+          ? `<div class="sec-question" data-sec="${escapeHtml(def.key)}" title="クリックで質問文を編集(全商品に反映)">💬 ${escapeHtml(def.question)} <span class="sec-question-edit">✎</span></div>`
+          : `<div class="sec-question sec-question-empty" data-sec="${escapeHtml(def.key)}" title="クリックで質問文を追加(全商品に反映)">＋ 質問文を追加</div>`}
+      </div>
       <div class="sec-images">${imagesHtml || '<span class="sec-empty">画像なし</span>'}</div>
       <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
     </div>`;
@@ -468,6 +472,47 @@ function renderSections(p) {
       openTextFullscreen(btn.dataset.sec, parseInt(btn.dataset.idx));
     });
   });
+  // 質問文クリックで編集(全商品に反映)
+  wrap.querySelectorAll(".sec-question").forEach((el) => {
+    el.addEventListener("click", () => editSectionQuestionInline(el.dataset.sec));
+  });
+}
+
+// 商品ページ上で質問文をインライン編集(全商品共通の定義を更新)
+function editSectionQuestionInline(key) {
+  const def = sectionDefs.find((d) => d.key === key);
+  if (!def) return;
+  const wrap = document.querySelector(`.sec-question-wrap[data-sec="${CSS.escape(key)}"]`);
+  if (!wrap) return;
+  const oldQ = def.question || "";
+  wrap.innerHTML = `
+    <textarea class="sec-question-input" rows="2" placeholder="例: この商品の強み・弱みは？競合との違いは？(全商品に反映)">${escapeHtml(oldQ)}</textarea>
+    <div class="sec-question-btns">
+      <button class="sec-q-save">💾 保存(全商品に反映)</button>
+      <button class="sec-q-cancel">キャンセル</button>
+    </div>
+  `;
+  const input = wrap.querySelector(".sec-question-input");
+  input.focus();
+  const save = async () => {
+    const newQ = input.value.trim();
+    if ((def.question || "") === newQ) { renderSections(getCurrentProduct()); return; }
+    try {
+      def.question = newQ || undefined;
+      await saveData(`Edit question: ${def.label}`);
+      renderSections(getCurrentProduct());
+    } catch (err) {
+      alert("保存失敗: " + err.message);
+      def.question = oldQ || undefined;
+      renderSections(getCurrentProduct());
+    }
+  };
+  wrap.querySelector(".sec-q-save").addEventListener("click", save);
+  wrap.querySelector(".sec-q-cancel").addEventListener("click", () => renderSections(getCurrentProduct()));
+}
+
+function getCurrentProduct() {
+  return products.find((x) => x.id === currentDetailId);
 }
 
 // ---------- 全画面テキストエディタ ----------
