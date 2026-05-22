@@ -7,7 +7,31 @@
       "image": "images/mpgdcx7n4zju50.jpg",
       "csvPath": "csv/mpgdcx7n4zju50-reviews_20260514170419.csv",
       "csvName": "reviews_20260514170419.csv",
-      "createdAt": "2026-05-22T03:37:48.718Z"
+      "createdAt": "2026-05-22T03:37:48.718Z",
+      "sections": [
+        {
+          "key": "top",
+          "label": "TOP画像",
+          "texts": [
+            ""
+          ],
+          "images": [
+            "images/mpgdcx7n4zju50-top-1779425601739-1.jpg"
+          ]
+        },
+        {
+          "key": "analysis",
+          "label": "分析",
+          "texts": [],
+          "images": []
+        },
+        {
+          "key": "plan",
+          "label": "構成案",
+          "texts": [],
+          "images": []
+        }
+      ]
     }
   ]
 }
