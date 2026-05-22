@@ -487,7 +487,9 @@ function renderSections(p) {
 
   const sectionsHtml = p.sectionItems.map((item, secIdx) => {
     const def = sectionDefs.find((d) => d.key === item.key);
-    const label = def ? def.label : (item.key || "項目");
+    const label = (item.label !== undefined && item.label !== null && item.label !== "")
+      ? item.label
+      : (def ? def.label : (item.key || "項目"));
     const imagesHtml = (item.images || []).map((path, i) => `
       <div class="sec-img-item">
         <img data-load-path="${escapeHtml(path)}" alt="" />
@@ -515,7 +517,7 @@ function renderSections(p) {
     return `
     <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
       <div class="editor-section-head">
-        <h3 class="editor-section-title">${escapeHtml(label)}</h3>
+        <h3 class="editor-section-title" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の項目名を編集">${escapeHtml(label)} <span class="sec-title-edit">✎</span></h3>
         <div class="editor-section-actions">
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
@@ -610,6 +612,10 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-question").forEach((el) => {
     el.addEventListener("click", () => editSectionQuestionInline(el.dataset.iid));
   });
+  // タイトルクリックで編集(その商品だけ)
+  wrap.querySelectorAll(".editor-section-title[data-iid]").forEach((el) => {
+    el.addEventListener("click", () => editSectionTitleInline(el.dataset.iid));
+  });
   // 項目ごと削除
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionItem(btn.dataset.iid));
@@ -627,7 +633,7 @@ function toggleAddItemMenu() {
   const menu = $("sec-add-item-menu");
   if (menu.style.display === "block") { menu.style.display = "none"; return; }
   if (sectionDefs.length === 0) {
-    menu.innerHTML = '<div class="sec-add-item-empty">項目管理から項目を追加してください</div>';
+    menu.innerHTML = '<div class="sec-add-item-empty">初期項目管理から項目を追加してください</div>';
   } else {
     menu.innerHTML = sectionDefs.map((def) =>
       `<button class="sec-add-item-option" data-key="${escapeHtml(def.key)}">${escapeHtml(def.label)}</button>`
@@ -738,6 +744,56 @@ function editSectionQuestionInline(iid) {
   wrap.querySelector(".sec-q-save").addEventListener("click", () => save(false));
   wrap.querySelector(".sec-q-cancel").addEventListener("click", () => renderSections(p));
   const resetBtn = wrap.querySelector(".sec-q-reset");
+  if (resetBtn) resetBtn.addEventListener("click", () => save(true));
+}
+
+// 項目タイトルをインライン編集(このitemだけに保存)
+function editSectionTitleInline(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const def = sectionDefs.find((d) => d.key === item.key);
+  const h3 = document.querySelector(`.editor-section-title[data-iid="${CSS.escape(iid)}"]`);
+  if (!h3) return;
+  const currentLabel = (item.label !== undefined && item.label !== null && item.label !== "")
+    ? item.label
+    : (def ? def.label : "");
+  const defaultLabel = def ? def.label : "";
+  const isOverridden = (item.label !== undefined && item.label !== null && item.label !== "");
+  h3.innerHTML = `
+    <input class="sec-title-input" type="text" value="${escapeHtml(currentLabel)}" placeholder="${escapeHtml(defaultLabel || "項目名")}" />
+    <span class="sec-title-btns">
+      <button class="sec-title-save">💾</button>
+      <button class="sec-title-cancel">×</button>
+      ${isOverridden && defaultLabel ? '<button class="sec-title-reset">初期値に戻す</button>' : ''}
+    </span>
+  `;
+  const input = h3.querySelector(".sec-title-input");
+  input.focus();
+  input.select();
+  const save = async (resetToDefault) => {
+    const newLabel = resetToDefault ? "" : input.value.trim();
+    try {
+      if (resetToDefault || newLabel === "" || newLabel === defaultLabel) {
+        delete item.label;
+      } else {
+        item.label = newLabel;
+      }
+      await saveData(`Edit section title: ${p.name}`, mergeCurrentProduct(p));
+      renderSections(p);
+    } catch (err) {
+      alert("保存失敗: " + err.message);
+      renderSections(p);
+    }
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(false); }
+    else if (e.key === "Escape") { e.preventDefault(); renderSections(p); }
+  });
+  h3.querySelector(".sec-title-save").addEventListener("click", () => save(false));
+  h3.querySelector(".sec-title-cancel").addEventListener("click", () => renderSections(p));
+  const resetBtn = h3.querySelector(".sec-title-reset");
   if (resetBtn) resetBtn.addEventListener("click", () => save(true));
 }
 
