@@ -8,6 +8,7 @@ const STORAGE_KEY = "imageFlow.auth.v1";
 const DATA_PATH = "data.json";
 const IMAGES_DIR = "images";
 const CSV_DIR = "csv";
+const FILES_DIR = "files";
 
 // 初期デフォルト項目(初めて使うとき / 定義が空のとき)
 const DEFAULT_SECTIONS = [
@@ -22,6 +23,7 @@ function getItem(p, iid) {
   if (it) {
     if (!Array.isArray(it.texts)) it.texts = [];
     if (!Array.isArray(it.images)) it.images = [];
+    if (!Array.isArray(it.files)) it.files = [];
   }
   return it;
 }
@@ -163,6 +165,7 @@ function migrateProducts() {
     p.sectionItems.forEach((it) => {
       if (!Array.isArray(it.texts)) it.texts = [];
       if (!Array.isArray(it.images)) it.images = [];
+      if (!Array.isArray(it.files)) it.files = [];
       if (!it.iid) it.iid = genId();
     });
   });
@@ -254,7 +257,7 @@ async function deleteFile(path, sha, commitMessage) {
 
 const blobCache = new Map();
 
-async function fetchAsBlobUrl(path, isImage = true) {
+async function fetchAsBlobUrl(path, isImage = true, genericFile = false) {
   if (blobCache.has(path)) return blobCache.get(path);
   try {
     const res = await ghFetch(`contents/${path}?ref=${auth.branch}`);
@@ -284,6 +287,8 @@ async function fetchAsBlobUrl(path, isImage = true) {
            : ext === "gif" ? "image/gif"
            : ext === "webp" ? "image/webp"
            : "image/png";
+    } else if (genericFile) {
+      mime = "application/octet-stream";
     } else {
       mime = "text/csv";
     }
@@ -515,6 +520,12 @@ function renderSections(p) {
         <button class="sec-img-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="削除">×</button>
       </div>
     `).join("");
+    const filesHtml = (item.files || []).map((f, i) => `
+      <div class="sec-file-item">
+        <a class="sec-file-link" data-load-file="${escapeHtml(f.path)}" data-name="${escapeHtml(f.name)}" href="#" download="${escapeHtml(f.name)}">📄 <span>${escapeHtml(f.name)}</span></a>
+        <button class="sec-file-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="削除">×</button>
+      </div>
+    `).join("");
     const textsHtml = (item.texts || []).map((t, i) => `
       <div class="sec-text-item">
         <textarea class="sec-text-area" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" rows="3" placeholder="テキストを入力…">${escapeHtml(t)}</textarea>
@@ -535,7 +546,7 @@ function renderSections(p) {
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
           <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
-          <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像</button>
+          <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像/ファイル</button>
           <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
         </div>
       </div>
@@ -546,9 +557,10 @@ function renderSections(p) {
       </div>
       <div class="sec-images" data-iid="${escapeHtml(item.iid)}">
         ${imagesHtml}
+        ${filesHtml}
         <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}" style="display:none">
           <span class="sec-dropzone-icon">⇪</span>
-          <span class="sec-dropzone-text">ここに画像をドラッグ&ドロップ</span>
+          <span class="sec-dropzone-text">ここに画像orファイルをアップロード</span>
         </div>
       </div>
       <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
@@ -568,6 +580,16 @@ function renderSections(p) {
   wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
     loadImageInto(img, img.dataset.loadPath);
     img.addEventListener("click", () => openLightbox(img.src));
+  });
+  // ファイルのダウンロードリンク読み込み
+  wrap.querySelectorAll(".sec-file-link[data-load-file]").forEach((a) => {
+    fetchAsBlobUrl(a.dataset.loadFile, false, true).then((url) => {
+      if (url) { a.href = url; a.download = a.dataset.name || "file"; }
+    });
+  });
+  // ファイル削除
+  wrap.querySelectorAll(".sec-file-remove").forEach((btn) => {
+    btn.addEventListener("click", () => removeSectionFile(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
   // テキスト追加
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
@@ -690,6 +712,11 @@ async function removeSectionItem(iid) {
     for (const path of (item.images || [])) {
       try { await deleteFile(path, null, `Remove section item image: ${p.id}`); }
       catch (e) { console.warn("画像削除失敗(続行):", e); }
+    }
+    // 添付ファイルを削除
+    for (const f of (item.files || [])) {
+      try { await deleteFile(f.path, null, `Remove section item file: ${p.id}`); }
+      catch (e) { console.warn("ファイル削除失敗(続行):", e); }
     }
     p.sectionItems = p.sectionItems.filter((x) => x.iid !== iid);
     await saveData(`Remove section item: ${p.name}`, mergeCurrentProduct(p));
@@ -836,37 +863,64 @@ async function removeSectionText(iid, idx) {
   }
 }
 
-// 画像追加(複数可)
+// 画像・ファイル追加(複数可、画像はimages・それ以外はfilesへ)
 async function addSectionImages(iid, files) {
   const p = getCurrentProduct();
   if (!p) return;
   const item = getItem(p, iid);
   if (!item) return;
+  if (!Array.isArray(item.files)) item.files = [];
 
-  const imgs = [...files].filter((f) => f.type.startsWith("image/"));
-  if (imgs.length === 0) return;
+  const all = [...files];
+  if (all.length === 0) return;
 
-  setHeadStatus(`画像をアップロード中… (0/${imgs.length})`);
+  setHeadStatus(`アップロード中… (0/${all.length})`);
   try {
-    for (let i = 0; i < imgs.length; i++) {
-      const file = imgs[i];
+    for (let i = 0; i < all.length; i++) {
+      const file = all[i];
       if (file.size > 50 * 1024 * 1024) {
         alert(`${file.name} は大きすぎます(50MB超)。スキップします。`);
         continue;
       }
-      setHeadStatus(`画像をアップロード中… (${i + 1}/${imgs.length})`);
+      setHeadStatus(`アップロード中… (${i + 1}/${all.length})`);
       const base64 = await fileToBase64(file);
-      const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      const path = `${IMAGES_DIR}/${p.id}-${item.iid}-${Date.now()}-${i + 1}.${ext}`;
-      await uploadFile(path, base64, `Add image to ${sectionLabelOf(item)}: ${p.id}`);
-      item.images.push(path);
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+      if (file.type.startsWith("image/")) {
+        const path = `${IMAGES_DIR}/${p.id}-${item.iid}-${Date.now()}-${i + 1}.${ext}`;
+        await uploadFile(path, base64, `Add image to ${sectionLabelOf(item)}: ${p.id}`);
+        item.images.push(path);
+      } else {
+        const safeName = file.name.replace(/[^\w.\-]/g, "_");
+        const path = `${FILES_DIR}/${p.id}-${item.iid}-${Date.now()}-${i + 1}-${safeName}`;
+        await uploadFile(path, base64, `Add file to ${sectionLabelOf(item)}: ${p.id}`);
+        item.files.push({ path, name: file.name });
+      }
     }
-    await saveData(`Add images to ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Add files to ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
     setHeadStatus("✓ 追加しました", "ok");
     renderSections(p);
     setTimeout(() => setHeadStatus(""), 1200);
   } catch (err) {
     setHeadStatus("✗ " + err.message, "err");
+  }
+}
+
+// ファイル削除
+async function removeSectionFile(iid, idx) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item || !Array.isArray(item.files) || !item.files[idx]) return;
+  if (!confirm("このファイルを削除しますか?")) return;
+  const f = item.files[idx];
+  try {
+    try { await deleteFile(f.path, null, `Remove file from ${sectionLabelOf(item)}: ${p.id}`); }
+    catch (e) { console.warn("ファイル削除失敗(続行):", e); }
+    item.files.splice(idx, 1);
+    await saveData(`Remove file from ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
+    renderSections(p);
+  } catch (err) {
+    alert("削除失敗: " + err.message);
   }
 }
 
@@ -1199,6 +1253,12 @@ async function deleteSectionDef(key) {
             catch (e) { console.warn("画像削除失敗(続行):", e); }
           }
         }
+        if (it.key === key && it.files) {
+          for (const f of it.files) {
+            try { await deleteFile(f.path, null, `Delete section file: ${p.id}`); }
+            catch (e) { console.warn("ファイル削除失敗(続行):", e); }
+          }
+        }
       }
       p.sectionItems = p.sectionItems.filter((it) => it.key !== key);
     }
@@ -1241,12 +1301,16 @@ async function deleteProduct() {
       try { await deleteFile(p.csvPath, null, `Delete csv: ${p.id}`); }
       catch (e) { console.warn("CSV削除失敗(続行):", e); }
     }
-    // 全項目の画像も削除
+    // 全項目の画像・ファイルも削除
     if (Array.isArray(p.sectionItems)) {
       for (const it of p.sectionItems) {
         for (const path of (it.images || [])) {
           try { await deleteFile(path, null, `Delete section image: ${p.id}`); }
           catch (e) { console.warn("セクション画像削除失敗(続行):", e); }
+        }
+        for (const f of (it.files || [])) {
+          try { await deleteFile(f.path, null, `Delete section file: ${p.id}`); }
+          catch (e) { console.warn("セクションファイル削除失敗(続行):", e); }
         }
       }
     }
