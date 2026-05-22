@@ -300,6 +300,7 @@ async function fetchAsBlobUrl(path, isImage = true, genericFile = false) {
       mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
            : ext === "gif" ? "image/gif"
            : ext === "webp" ? "image/webp"
+           : ext === "svg" ? "image/svg+xml"
            : "image/png";
     } else if (genericFile) {
       mime = "application/octet-stream";
@@ -428,10 +429,28 @@ function renderGalleryView() {
     </div>`;
   }).join("");
 
-  // サムネ読み込み + クリックで拡大
-  gallery.querySelectorAll(".row-thumb[data-load-path]").forEach((img) => {
-    loadImageInto(img, img.dataset.loadPath);
-    img.addEventListener("click", () => openLightbox(img.src));
+  // サムネ読み込み + クリックで拡大(前後送りは「その行のまとまり」内だけ)
+  gallery.querySelectorAll(".gallery-row").forEach((row) => {
+    const thumbs = Array.from(row.querySelectorAll(".row-thumb[data-load-path]"));
+    // この行のsrcを共有配列にして、各サムネが読み込まれたら同じ配列が更新される
+    const srcs = new Array(thumbs.length).fill("");
+    thumbs.forEach((img, i) => {
+      fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
+        if (url) img.src = url;
+        srcs[i] = url || "";
+        img.removeAttribute("data-loading");
+      });
+      img.dataset.loading = "1";
+      img.addEventListener("click", () => {
+        // クリック時点で読み込み済みのsrcを使ってまとまりを構成
+        const list = thumbs.map((t, j) => t.src || srcs[j]).filter(Boolean);
+        // クリックしたサムネが list 内で何番目かを求める
+        const clickedSrc = img.src || srcs[i];
+        let idx = list.indexOf(clickedSrc);
+        if (idx === -1) idx = 0;
+        showLightbox(list, idx);
+      });
+    });
   });
   // 「編集」ボタンで編集ページへ
   gallery.querySelectorAll(".row-open-btn").forEach((btn) => {
@@ -485,10 +504,12 @@ function toggleExcludeMaterial() {
 
 // ---------- 商品詳細 ----------
 function closeAllModals() {
-  ["add-modal", "detail-modal", "section-mgr-modal", "text-fullscreen", "lightbox"].forEach((id) => {
+  ["add-modal", "detail-modal", "section-mgr-modal", "text-fullscreen"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
+  // ライトボックスは状態リセットも伴うので専用関数で閉じる
+  if (typeof closeLightbox === "function") closeLightbox();
 }
 
 function openDetail(id) {
@@ -586,7 +607,10 @@ function renderSections(p) {
       </div>
       <div class="sec-dual">
         <div class="sec-side">
-          <div class="sec-side-label">素材</div>
+          <div class="sec-side-label sec-side-label-row">
+            <span>素材</span>
+            <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
+          </div>
           <div class="sec-images">
             ${materialContent}
             <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}" data-side="material" style="display:none">
@@ -619,10 +643,25 @@ function renderSections(p) {
 
   wrap.innerHTML = sectionsHtml + addAreaHtml;
 
-  // 画像読み込み
-  wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
-    loadImageInto(img, img.dataset.loadPath);
-    img.addEventListener("click", () => openLightbox(img.src));
+  // 画像読み込み + クリックで拡大(前後送りは「その項目の素材+完成品のまとまり」内だけ)
+  wrap.querySelectorAll(".editor-section").forEach((section) => {
+    const imgs = Array.from(section.querySelectorAll("img[data-load-path]"));
+    const srcs = new Array(imgs.length).fill("");
+    imgs.forEach((img, i) => {
+      img.dataset.loading = "1";
+      fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
+        if (url) img.src = url;
+        srcs[i] = url || "";
+        img.removeAttribute("data-loading");
+      });
+      img.addEventListener("click", () => {
+        const list = imgs.map((t, j) => t.src || srcs[j]).filter(Boolean);
+        const clickedSrc = img.src || srcs[i];
+        let idx = list.indexOf(clickedSrc);
+        if (idx === -1) idx = 0;
+        showLightbox(list, idx);
+      });
+    });
   });
   // ファイルのダウンロードリンク読み込み
   wrap.querySelectorAll(".sec-file-link[data-load-file]").forEach((a) => {
@@ -647,6 +686,10 @@ function renderSections(p) {
       const show = dzs[0] && dzs[0].style.display === "none";
       dzs.forEach((dz) => { dz.style.display = show ? "flex" : "none"; });
     });
+  });
+  // 「右上の完成品を使用」プレースホルダを素材に追加
+  wrap.querySelectorAll(".sec-use-final").forEach((btn) => {
+    btn.addEventListener("click", () => addFinalPlaceholder(btn.dataset.iid));
   });
   // ドロップゾーン(side別、ドラッグ&ドロップ専用)
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
@@ -1022,7 +1065,42 @@ async function addSectionImages(iid, side, files) {
   }
 }
 
-// ファイル削除(side対応)
+// 「右上の完成品を使用」プレースホルダ画像(文字だけの□)を素材に追加
+// SVGで生成 → 通常の画像と同じく images/ にアップロードし item.images に追加。
+// これによりライトボックス・⇔移動・削除・並べ替えすべて既存処理で動く。
+function finalPlaceholderSvgBase64() {
+  // 正方形・落ち着いた配色。文言は「右上の完成品を使用」
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="250" font-size="58" fill="#c8451c">↗</text>
+    <text x="300" y="330" font-size="42" font-weight="700">右上の</text>
+    <text x="300" y="392" font-size="42" font-weight="700">完成品を使用</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addFinalPlaceholder(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.images)) item.images = [];
+  setHeadStatus("プレースホルダを追加中…");
+  try {
+    const base64 = finalPlaceholderSvgBase64();
+    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-usefinal.svg`;
+    await uploadFile(path, base64, `Add 'use final' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
+    item.images.push(path);
+    await saveData(`Add 'use final' placeholder: ${p.name}`, mergeCurrentProduct(p));
+    setHeadStatus("✓ 追加しました", "ok");
+    renderSections(p);
+    setTimeout(() => setHeadStatus(""), 1200);
+  } catch (err) {
+    setHeadStatus("✗ " + err.message, "err");
+  }
+}
 async function removeSectionFile(iid, side, idx) {
   const p = getCurrentProduct();
   if (!p) return;
@@ -1193,11 +1271,60 @@ function fileToBase64(file) {
   });
 }
 
-// ---------- ライトボックス(画像拡大) ----------
-function openLightbox(src) {
-  if (!src) return;
-  $("lightbox-img").src = src;
+// ---------- ライトボックス(画像拡大・前後送り対応 v3.4.0) ----------
+// lightboxList: 表示中のまとまり(同じ行/同じ項目の画像src配列)
+// lightboxIdx : その中で今表示している位置
+let lightboxList = [];
+let lightboxIdx = 0;
+
+// list: 画像srcの配列(まとまり)、startIdx: 開始位置
+function showLightbox(list, startIdx) {
+  if (!Array.isArray(list) || list.length === 0) return;
+  lightboxList = list.filter((s) => !!s);
+  if (lightboxList.length === 0) return;
+  lightboxIdx = Math.max(0, Math.min(startIdx || 0, lightboxList.length - 1));
+  updateLightbox();
   $("lightbox").style.display = "flex";
+}
+
+// 表示内容の更新(メイン画像・前後プレビュー・カウンター・矢印の出し分け)
+function updateLightbox() {
+  const total = lightboxList.length;
+  const cur = lightboxList[lightboxIdx];
+  $("lightbox-img").src = cur || "";
+
+  const counter = $("lightbox-counter");
+  if (counter) counter.textContent = total > 1 ? `${lightboxIdx + 1} / ${total}` : "";
+
+  const prevBtn = $("lightbox-prev");
+  const nextBtn = $("lightbox-next");
+  const prevImg = $("lightbox-prev-img");
+  const nextImg = $("lightbox-next-img");
+
+  // まとまりの中だけで前後送り(端ではボタンを隠す)
+  const hasPrev = lightboxIdx > 0;
+  const hasNext = lightboxIdx < total - 1;
+  if (prevBtn) prevBtn.classList.toggle("disabled", !hasPrev);
+  if (nextBtn) nextBtn.classList.toggle("disabled", !hasNext);
+  if (prevImg) prevImg.src = hasPrev ? (lightboxList[lightboxIdx - 1] || "") : "";
+  if (nextImg) nextImg.src = hasNext ? (lightboxList[lightboxIdx + 1] || "") : "";
+}
+
+// 前後送り(まとまりの範囲内のみ。端は何もしない)
+function lightboxNav(delta) {
+  const next = lightboxIdx + delta;
+  if (next < 0 || next >= lightboxList.length) return;
+  lightboxIdx = next;
+  updateLightbox();
+}
+
+function closeLightbox() {
+  $("lightbox").style.display = "none";
+  lightboxList = [];
+  lightboxIdx = 0;
+  $("lightbox-img").src = "";
+  const pi = $("lightbox-prev-img"); if (pi) pi.src = "";
+  const ni = $("lightbox-next-img"); if (ni) ni.src = "";
 }
 
 // ---------- 項目管理 ----------
@@ -1630,8 +1757,24 @@ function bindEvents() {
     e.target.value = "";
   });
 
-  // ライトボックス(背景クリックで閉じる)
-  $("lightbox").addEventListener("click", () => { $("lightbox").style.display = "none"; });
+  // ライトボックス: 背景クリックで閉じる(中の画像・ボタンクリックでは閉じない)
+  $("lightbox").addEventListener("click", (e) => {
+    if (e.target === $("lightbox")) closeLightbox();
+  });
+  // × 閉じる
+  $("lightbox-close").addEventListener("click", (e) => { e.stopPropagation(); closeLightbox(); });
+  // 前へ / 次へ
+  $("lightbox-prev").addEventListener("click", (e) => { e.stopPropagation(); lightboxNav(-1); });
+  $("lightbox-next").addEventListener("click", (e) => { e.stopPropagation(); lightboxNav(1); });
+  // メイン画像クリックでは閉じない(誤操作防止)
+  $("lightbox-img").addEventListener("click", (e) => e.stopPropagation());
+  // ← → で前後送り、Esc で閉じる
+  document.addEventListener("keydown", (e) => {
+    if ($("lightbox").style.display !== "flex") return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); lightboxNav(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); lightboxNav(1); }
+    else if (e.key === "Escape") { e.preventDefault(); closeLightbox(); }
+  });
 
   // 全画面テキストエディタ: 完了ボタン
   $("text-fullscreen-close").addEventListener("click", closeTextFullscreen);
