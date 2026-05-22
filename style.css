@@ -1688,3 +1688,19 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   .editor-head-img { max-width: 220px; margin: 0 auto; }
   .sec-img-item { width: 100px; height: 100px; }
 }
+
+/* ========== ImageFlow v1.5: 保存ボタン/削除ボタン配置 ========== */
+/* 右上の保存ボタン */
+.detail-top-actions .editor-save-btn {
+  margin: 0;
+  padding: 8px 22px;
+  font-size: 13px;
+}
+/* 左カラム: 商品名下の削除ボタン */
+.editor-left-actions {
+  margin-top: 14px;
+}
+.editor-left-actions .btn-danger {
+  padding: 7px 14px;
+  font-size: 12px;
+}
