@@ -534,7 +534,6 @@ function renderSections(p) {
         <div class="editor-section-actions">
           <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
           <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像</button>
-          <input type="file" class="sec-img-input" data-iid="${escapeHtml(item.iid)}" accept="image/*" multiple hidden />
           <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
         </div>
       </div>
@@ -545,7 +544,7 @@ function renderSections(p) {
       </div>
       <div class="sec-images" data-iid="${escapeHtml(item.iid)}">
         ${imagesHtml}
-        <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}">
+        <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}" style="display:none">
           <span class="sec-dropzone-icon">⇪</span>
           <span class="sec-dropzone-text">ここに画像をドラッグ&ドロップ</span>
         </div>
@@ -572,26 +571,17 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
     btn.addEventListener("click", () => addSectionText(btn.dataset.iid));
   });
-  // 画像追加(ファイル選択)
+  // 「+ 画像」でドロップゾーンの表示/非表示をトグル
   wrap.querySelectorAll(".sec-add-img").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const input = wrap.querySelector(`.sec-img-input[data-iid="${CSS.escape(btn.dataset.iid)}"]`);
-      if (input) input.click();
+      const dz = wrap.querySelector(`.sec-dropzone[data-iid="${CSS.escape(btn.dataset.iid)}"]`);
+      if (!dz) return;
+      dz.style.display = (dz.style.display === "none") ? "flex" : "none";
     });
   });
-  wrap.querySelectorAll(".sec-img-input").forEach((input) => {
-    input.addEventListener("change", (e) => {
-      addSectionImages(input.dataset.iid, e.target.files);
-      e.target.value = "";
-    });
-  });
-  // 画像ドロップゾーン
+  // 画像ドロップゾーン(ドラッグ&ドロップ専用)
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
     const iid = dz.dataset.iid;
-    dz.addEventListener("click", () => {
-      const input = wrap.querySelector(`.sec-img-input[data-iid="${CSS.escape(iid)}"]`);
-      if (input) input.click();
-    });
     dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
     dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
     dz.addEventListener("drop", (e) => {
