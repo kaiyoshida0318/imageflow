@@ -30,6 +30,7 @@ let dataSha = null;
 let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let currentDetailId = null;
+let viewMode = "card";  // "card" or "gallery"(画像一覧)
 
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
@@ -279,6 +280,26 @@ async function verifyAuth(a) {
 }
 
 // ---------- レンダリング(商品一覧) ----------
+// 商品の全画像パスを集める(商品画像 + 各項目の画像)
+function collectAllImages(p) {
+  const imgs = [];
+  if (p.image) imgs.push(p.image);
+  if (p.sectionData) {
+    for (const def of sectionDefs) {
+      const sd = p.sectionData[def.key];
+      if (sd && sd.images) imgs.push(...sd.images);
+    }
+    // 定義に無い項目の画像も拾う(念のため)
+    const defKeys = new Set(sectionDefs.map((d) => d.key));
+    for (const key of Object.keys(p.sectionData)) {
+      if (!defKeys.has(key) && p.sectionData[key].images) {
+        imgs.push(...p.sectionData[key].images);
+      }
+    }
+  }
+  return imgs;
+}
+
 function render() {
   $("stat-count").textContent = products.length;
   const gallery = $("gallery");
@@ -291,6 +312,17 @@ function render() {
   }
   $("empty-state").style.display = "none";
 
+  if (viewMode === "gallery") {
+    renderGalleryView();
+  } else {
+    renderCardView();
+  }
+}
+
+// カード表示(従来)
+function renderCardView() {
+  const gallery = $("gallery");
+  gallery.className = "gallery";
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   gallery.innerHTML = sorted.map((p) => {
@@ -318,6 +350,50 @@ function render() {
   document.querySelectorAll(".card").forEach((el) => {
     el.addEventListener("click", () => openDetail(el.dataset.id));
   });
+}
+
+// 画像一覧表示(1商品=横一列で全画像)
+function renderGalleryView() {
+  const gallery = $("gallery");
+  gallery.className = "gallery-rows";
+  const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  gallery.innerHTML = sorted.map((p) => {
+    const imgs = collectAllImages(p);
+    const thumbsHtml = imgs.length
+      ? imgs.map((path) => `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`).join("")
+      : '<span class="row-noimg">画像なし</span>';
+    return `
+    <div class="gallery-row" data-id="${escapeHtml(p.id)}">
+      <div class="row-info">
+        <div class="row-start-date">${escapeHtml(p.startDate || "—")}</div>
+        <div class="row-name">${escapeHtml(p.name || "無題")}</div>
+        <button class="row-open-btn" data-id="${escapeHtml(p.id)}">編集 ›</button>
+      </div>
+      <div class="row-thumbs">${thumbsHtml}</div>
+    </div>`;
+  }).join("");
+
+  // サムネ読み込み + クリックで拡大
+  gallery.querySelectorAll(".row-thumb[data-load-path]").forEach((img) => {
+    loadImageInto(img, img.dataset.loadPath);
+    img.addEventListener("click", () => openLightbox(img.src));
+  });
+  // 「編集」ボタンで編集ページへ
+  gallery.querySelectorAll(".row-open-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openDetail(btn.dataset.id);
+    });
+  });
+}
+
+// 表示モード切り替え
+function toggleViewMode() {
+  viewMode = viewMode === "card" ? "gallery" : "card";
+  const btn = $("btn-view-toggle");
+  btn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
+  render();
 }
 
 // ---------- 商品詳細 ----------
@@ -1270,6 +1346,8 @@ function bindEvents() {
 
   // 項目管理
   $("btn-section-mgr").addEventListener("click", openSectionManager);
+  // 表示モード切り替え
+  $("btn-view-toggle").addEventListener("click", toggleViewMode);
   $("section-mgr-add").addEventListener("click", addSectionDef);
   $("section-mgr-new-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addSectionDef(); }
