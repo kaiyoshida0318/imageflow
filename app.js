@@ -9,11 +9,10 @@ const DATA_PATH = "data.json";
 const IMAGES_DIR = "images";
 const CSV_DIR = "csv";
 
-// デフォルトの項目(セクション)。後でカスタム化する予定。
+// デフォルトの項目(セクション)。楽天レビューはCSVインポートが担うため別扱い。
 const DEFAULT_SECTIONS = [
   { key: "top", label: "TOP画像" },
   { key: "analysis", label: "分析" },
-  { key: "review", label: "楽天レビュー" },
   { key: "plan", label: "構成案" }
 ];
 
