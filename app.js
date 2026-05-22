@@ -39,6 +39,10 @@ let viewMode = (() => {
   try { return localStorage.getItem("imageFlow.viewMode") === "gallery" ? "gallery" : "card"; }
   catch { return "card"; }
 })();  // "card" or "gallery"(画像一覧)
+let galleryThumb = (() => {
+  try { return localStorage.getItem("imageFlow.galleryThumb") === "tall" ? "tall" : "square"; }
+  catch { return "square"; }
+})();  // "square"(正方形) or "tall"(縦長 750x1230)
 
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
@@ -401,7 +405,7 @@ function renderCardView() {
 // 画像一覧表示(1商品=横一列で全画像)
 function renderGalleryView() {
   const gallery = $("gallery");
-  gallery.className = "gallery-rows";
+  gallery.className = "gallery-rows thumb-" + galleryThumb;
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   gallery.innerHTML = sorted.map((p) => {
@@ -440,6 +444,23 @@ function toggleViewMode() {
   try { localStorage.setItem("imageFlow.viewMode", viewMode); } catch {}
   const btn = $("btn-view-toggle");
   btn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
+  updateThumbToggleVisibility();
+  render();
+}
+
+// サムネ高さボタンの表示/非表示(画像一覧のときだけ出す)
+function updateThumbToggleVisibility() {
+  const tb = $("btn-thumb-toggle");
+  if (!tb) return;
+  tb.style.display = (viewMode === "gallery") ? "" : "none";
+  tb.textContent = galleryThumb === "tall" ? "🔲 正方形表示" : "📐 縦長表示";
+}
+
+// サムネ高さの切り替え(正方形 ⇔ 縦長)
+function toggleThumbMode() {
+  galleryThumb = galleryThumb === "square" ? "tall" : "square";
+  try { localStorage.setItem("imageFlow.galleryThumb", galleryThumb); } catch {}
+  updateThumbToggleVisibility();
   render();
 }
 
@@ -1550,6 +1571,7 @@ function bindEvents() {
   $("btn-section-mgr").addEventListener("click", openSectionManager);
   // 表示モード切り替え
   $("btn-view-toggle").addEventListener("click", toggleViewMode);
+  $("btn-thumb-toggle").addEventListener("click", toggleThumbMode);
   $("section-mgr-add").addEventListener("click", addSectionDef);
   $("section-mgr-new-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addSectionDef(); }
@@ -1612,6 +1634,7 @@ async function init() {
   // 保存された表示モードに合わせてボタン文言を設定
   const vbtn = $("btn-view-toggle");
   if (vbtn) vbtn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
+  updateThumbToggleVisibility();
   try {
     await loadData();
     render();
