@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=2.9.0" />
+<link rel="stylesheet" href="style.css?v=3.0.0" />
 </head>
 <body>
 
@@ -44,13 +44,13 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v2.9.0</span>
+    <span class="version-badge">v3.0.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
     </div>
     <button id="btn-view-toggle" class="btn-secondary btn-header" title="カード表示 / 画像一覧表示 を切り替え">🖼️ 画像一覧</button>
-    <button id="btn-section-mgr" class="btn-secondary btn-header" title="項目の追加・編集・削除">📑 項目管理</button>
+    <button id="btn-section-mgr" class="btn-secondary btn-header" title="項目の初期値(名前・質問文)を管理">📑 初期項目管理</button>
     <button id="btn-add" class="btn-add">+ Add</button>
     <button id="btn-settings" class="btn-icon" title="接続設定">⚙</button>
   </div>
@@ -139,8 +139,8 @@
 <div id="section-mgr-modal" class="modal" style="display:none">
   <div class="modal-inner section-mgr-big">
     <button class="modal-close" data-close="section-mgr-modal">×</button>
-    <h2>項目管理</h2>
-    <p class="auth-desc" style="margin-bottom:16px">全商品の編集ページに共通で並ぶ項目を管理します。追加・名前変更・削除・並び替えができます。<br />「雛形編集」で設定した質問文は各商品の初期表示になり、商品ページで個別に上書きできます。</p>
+    <h2>初期項目管理</h2>
+    <p class="auth-desc" style="margin-bottom:16px">新しい商品を作ったときや項目を追加したときの「初期値」を管理します。ここで決めた項目名・質問文が各商品の初期表示になり、商品ページでそれぞれ個別に上書きできます。</p>
 
     <label class="field-label">新しい項目を追加</label>
     <div style="display:flex; gap:8px">
@@ -175,6 +175,6 @@
 </div>
 
 
-<script src="app.js?v=2.9.0"></script>
+<script src="app.js?v=3.0.0"></script>
 </body>
 </html>
