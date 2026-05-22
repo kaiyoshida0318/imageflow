@@ -1,0 +1,13 @@
+{
+  "products": [
+    {
+      "id": "mpgdcx7n4zju50",
+      "name": "眉毛ケア",
+      "startDate": "26-0522",
+      "image": "images/mpgdcx7n4zju50.jpg",
+      "csvPath": "csv/mpgdcx7n4zju50-reviews_20260514170419.csv",
+      "csvName": "reviews_20260514170419.csv",
+      "createdAt": "2026-05-22T03:37:48.718Z"
+    }
+  ]
+}
