@@ -578,12 +578,10 @@ async function removeSectionImage(key, idx) {
 }
 
 // ---------- 手動保存(右上の保存ボタン) ----------
-async function saveAllCurrent() {
+async function saveAllCurrent(forClose) {
   const p = products.find((x) => x.id === currentDetailId);
   if (!p) return;
-  const btn = $("btn-save-product");
   manualSaving = true;
-  // フォーカスのある入力欄をblurさせて値を確定(ただしblur保存はmanualSavingで抑止される)
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
@@ -600,16 +598,11 @@ async function saveAllCurrent() {
     }
   });
   try {
-    btn.disabled = true;
-    btn.textContent = "保存中…";
     await saveData(`Save product: ${p.name}`, mergeCurrentProduct(p));
-    btn.textContent = "✓ 保存しました";
     render();
-    setTimeout(() => { btn.textContent = "保存"; btn.disabled = false; }, 1000);
   } catch (err) {
-    alert("保存失敗: " + err.message);
-    btn.textContent = "保存";
-    btn.disabled = false;
+    if (!forClose) alert("保存失敗: " + err.message);
+    else console.error("保存失敗:", err);
   } finally {
     manualSaving = false;
   }
@@ -1129,7 +1122,11 @@ function bindEvents() {
 
   $("btn-save").addEventListener("click", saveProduct);
   $("btn-delete").addEventListener("click", deleteProduct);
-  $("btn-save-product").addEventListener("click", saveAllCurrent);
+  // ×(保存): 保存してから閉じる
+  $("btn-close-save").addEventListener("click", async () => {
+    await saveAllCurrent(true);
+    $("detail-modal").style.display = "none";
+  });
 
   // 項目管理
   $("btn-section-mgr").addEventListener("click", openSectionManager);
