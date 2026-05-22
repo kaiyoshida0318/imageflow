@@ -1453,14 +1453,24 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   padding: 36px 40px;
 }
 
-/* 商品情報ヘッド */
-.editor-head {
+/* 編集ページ: 左右2カラムレイアウト */
+.editor-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 28px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 24px;
+  grid-template-columns: 300px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+.editor-col-left {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+}
+.editor-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
 }
 .editor-head-img {
   position: relative;
@@ -1670,7 +1680,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 @media (max-width: 720px) {
   .modal-inner.editor { padding: 24px 18px; }
-  .editor-head { grid-template-columns: 1fr; gap: 16px; }
+  .editor-layout { grid-template-columns: 1fr; gap: 16px; }
+  .editor-col-left { position: static; }
   .editor-head-img { max-width: 220px; margin: 0 auto; }
   .sec-img-item { width: 100px; height: 100px; }
 }
