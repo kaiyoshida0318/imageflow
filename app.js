@@ -45,6 +45,10 @@ let dataSha = null;
 let products = [];
 let currentDetailId = null;
 
+// 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
+let saveChain = Promise.resolve();
+let manualSaving = false; // 手動保存ボタン処理中はblur自動保存をスキップ
+
 let pendingImage = null;
 let pendingCsv = null;
 
@@ -104,8 +108,16 @@ async function loadData() {
   }
 }
 
-async function saveData(commitMessage, mergeFn) {
-  const MAX_RETRIES = 3;
+// 外向きのsaveData: 直前の保存の完了を待ってから実行(直列化)
+function saveData(commitMessage, mergeFn) {
+  const run = () => _saveDataImpl(commitMessage, mergeFn);
+  // 前の保存が成功/失敗どちらでも、次の保存は必ず走らせる
+  saveChain = saveChain.then(run, run);
+  return saveChain;
+}
+
+async function _saveDataImpl(commitMessage, mergeFn) {
+  const MAX_RETRIES = 5;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const body = {
       message: commitMessage,
@@ -131,6 +143,8 @@ async function saveData(commitMessage, mergeFn) {
 
     if (isConflict) {
       console.warn(`競合検出 (attempt ${attempt + 1}/${MAX_RETRIES}) - 最新を取得してリトライ`);
+      // GitHub側の反映ラグを吸収するため少し待つ(回数に応じて伸ばす)
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       const mine = products.slice();
       await loadData();
       if (mergeFn) {
@@ -443,6 +457,7 @@ async function addSectionText(key) {
 
 // テキスト確定(blur時) - 内容が変わっていたら保存
 async function commitSectionText(key, idx, value) {
+  if (manualSaving) return; // 手動保存ボタン処理中は二重保存を避ける
   const p = products.find((x) => x.id === currentDetailId);
   if (!p) return;
   const sec = getSection(p, key);
@@ -529,9 +544,14 @@ async function saveAllCurrent() {
   const p = products.find((x) => x.id === currentDetailId);
   if (!p) return;
   const btn = $("btn-save-product");
+  manualSaving = true;
+  // フォーカスのある入力欄をblurさせて値を確定(ただしblur保存はmanualSavingで抑止される)
+  if (document.activeElement && typeof document.activeElement.blur === "function") {
+    document.activeElement.blur();
+  }
   const name = $("edit-product-name").value.trim();
   const startDate = $("edit-start-date").value.trim();
-  if (!name) { alert("商品名は空にできません"); return; }
+  if (!name) { alert("商品名は空にできません"); manualSaving = false; return; }
   p.name = name;
   p.startDate = startDate;
   document.querySelectorAll(".sec-text-area").forEach((ta) => {
@@ -552,6 +572,8 @@ async function saveAllCurrent() {
     alert("保存失敗: " + err.message);
     btn.textContent = "保存";
     btn.disabled = false;
+  } finally {
+    manualSaving = false;
   }
 }
 
@@ -564,6 +586,7 @@ function setHeadStatus(msg, kind) {
 
 // 商品名・日付の確定(blur時)
 async function commitProductField(field, value) {
+  if (manualSaving) return;
   const p = products.find((x) => x.id === currentDetailId);
   if (!p) return;
   const v = value.trim();
