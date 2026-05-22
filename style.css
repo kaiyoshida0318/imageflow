@@ -1750,12 +1750,83 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   background: var(--accent);
   color: #fff;
 }
-/* 拡大状態のテキストエリア */
+/* 拡大状態のテキストエリア(その場拡大は廃止、オーバーレイ方式に変更) */
 .sec-text-area.expanded {
-  min-height: 520px;
-  font-size: 15px;
+  min-height: 200px;
+  font-size: 14px;
 }
 
 /* 左カラム: 商品名下の削除ボタン(復活) */
 .editor-left-actions { margin-top: 14px; }
 .editor-left-actions .btn-danger { padding: 7px 14px; font-size: 12px; }
+
+/* ========== ImageFlow v1.9: 全画面テキストエディタ ========== */
+.text-fullscreen {
+  position: fixed;
+  inset: 0;
+  background: rgba(27,26,23,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+}
+.text-fullscreen-inner {
+  background: var(--card);
+  border-radius: 8px;
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.text-fullscreen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.text-fullscreen-title {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  position: relative;
+  padding-left: 14px;
+}
+.text-fullscreen-title::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 5px; height: 20px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.text-fullscreen-close {
+  padding: 9px 24px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.text-fullscreen-close:hover { background: var(--accent); }
+.text-fullscreen-area {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  padding: 28px 32px !important;
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.9;
+  resize: none;
+  width: 100%;
+}
+.text-fullscreen-area:focus { outline: none; }
