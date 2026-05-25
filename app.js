@@ -509,9 +509,10 @@ function renderSections(p) {
       + (item.files || []).map((f, i) => fileItemHtml(f, i, "material")).join("");
     const finalContent = (item.imagesFinal || []).map((p2, i) => imgItemHtml(p2, i, "final")).join("")
       + (item.filesFinal || []).map((f, i) => fileItemHtml(f, i, "final")).join("");
-    // 各サイドが空か(空なら横長の薄いバー、入っていれば正方形の追加口)
-    const materialEmpty = (item.images || []).length === 0 && (item.files || []).length === 0;
-    const finalEmpty = (item.imagesFinal || []).length === 0 && (item.filesFinal || []).length === 0;
+    // 各サイドに「画像」が入っているかで判定(ファイルチップは無視)。
+    // 画像が無ければ横長の薄いバー、1枚でもあれば正方形の追加口。
+    const materialEmpty = (item.images || []).length === 0;
+    const finalEmpty = (item.imagesFinal || []).length === 0;
 
     const textsHtml = (item.texts || []).map((t, i) => {
       const preview = (t && t.trim() !== "") ? escapeHtml(t) : "";
