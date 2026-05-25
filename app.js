@@ -510,22 +510,23 @@ function renderSections(p) {
     const finalContent = (item.imagesFinal || []).map((p2, i) => imgItemHtml(p2, i, "final")).join("")
       + (item.filesFinal || []).map((f, i) => fileItemHtml(f, i, "final")).join("");
 
-    const textsHtml = (item.texts || []).map((t, i) => `
+    const textsHtml = (item.texts || []).map((t, i) => {
+      const preview = (t && t.trim() !== "") ? escapeHtml(t) : "";
+      const isEmpty = preview === "";
+      return `
       <div class="sec-text-item">
-        <textarea class="sec-text-area" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" rows="3" placeholder="テキストを入力…">${escapeHtml(t)}</textarea>
+        <div class="sec-text-preview${isEmpty ? " sec-text-preview-empty" : ""}" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="クリックして編集">${isEmpty ? "クリックしてテキストを入力…" : preview}</div>
         <div class="sec-text-btns">
-          <button class="sec-text-expand" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="拡大/縮小">⤢</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
-      </div>
-    `).join("");
+      </div>`;
+    }).join("");
     const effectiveQ = (item.question !== undefined && item.question !== null && item.question !== "")
       ? item.question
       : (def && def.question ? def.question : "");
     return `
     <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
-      <div class="editor-section-head">
-        <h3 class="editor-section-title${labelIsEmpty ? " sec-title-empty" : ""}" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の項目名を編集">${labelIsEmpty ? "項目名を入力…" : escapeHtml(label)} <span class="sec-title-edit">✎</span></h3>
+      <div class="editor-section-head editor-section-head-notitle">
         <div class="editor-section-actions">
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
@@ -650,21 +651,13 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
-  // テキスト編集(blurで保存)
-  wrap.querySelectorAll(".sec-text-area").forEach((ta) => {
-    ta.addEventListener("blur", () => commitSectionText(ta.dataset.iid, parseInt(ta.dataset.idx), ta.value));
-  });
-  // テキスト全画面
-  wrap.querySelectorAll(".sec-text-expand").forEach((btn) => {
-    btn.addEventListener("click", () => openTextFullscreen(btn.dataset.iid, parseInt(btn.dataset.idx)));
+  // テキストプレビュークリックで全画面エディタを開く
+  wrap.querySelectorAll(".sec-text-preview").forEach((el) => {
+    el.addEventListener("click", () => openTextFullscreen(el.dataset.iid, parseInt(el.dataset.idx)));
   });
   // 質問文クリックで編集
   wrap.querySelectorAll(".sec-question").forEach((el) => {
     el.addEventListener("click", () => editSectionQuestionInline(el.dataset.iid));
-  });
-  // タイトルクリックで編集(その商品だけ)
-  wrap.querySelectorAll(".editor-section-title[data-iid]").forEach((el) => {
-    el.addEventListener("click", () => editSectionTitleInline(el.dataset.iid));
   });
   // 項目ごと削除
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
@@ -712,14 +705,12 @@ async function addBlankSectionItem() {
   try {
     await saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
-    // 追加した項目の画像ドロップゾーンを開き、タイトル編集にフォーカス
+    // 追加した項目の画像ドロップゾーンを開いて、その位置までスクロール
     setTimeout(() => {
       const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
       if (section) {
         section.querySelectorAll(".sec-dropzone").forEach((dz) => { dz.style.display = "flex"; });
         section.scrollIntoView({ behavior: "smooth", block: "center" });
-        const titleEl = section.querySelector(".editor-section-title[data-iid]");
-        if (titleEl) editSectionTitleInline(iid);
       }
     }, 50);
   } catch (err) {
@@ -899,9 +890,9 @@ async function addSectionText(iid) {
   if (!item) return;
   item.texts.push("");
   renderSections(p);
+  // 追加した空テキストの全画面エディタをすぐ開く
   setTimeout(() => {
-    const areas = document.querySelectorAll(`.sec-text-area[data-iid="${CSS.escape(iid)}"]`);
-    if (areas.length) areas[areas.length - 1].focus();
+    openTextFullscreen(iid, item.texts.length - 1);
   }, 30);
 }
 
@@ -1109,13 +1100,7 @@ async function saveAllCurrent(forClose) {
   if (!name) { alert("商品名は空にできません"); manualSaving = false; return false; }
   p.name = name;
   p.startDate = startDate;
-  document.querySelectorAll(".sec-text-area").forEach((ta) => {
-    const item = getItem(p, ta.dataset.iid);
-    const idx = parseInt(ta.dataset.idx);
-    if (item && item.texts[idx] !== undefined) {
-      item.texts[idx] = ta.value.trim();
-    }
-  });
+  // テキストは全画面エディタを閉じた時点で item.texts に保存済みなので、ここでの収集は不要
   try {
     await saveData(`Save product: ${p.name}`, mergeCurrentProduct(p));
     render();
@@ -1383,7 +1368,7 @@ async function saveProduct() {
       name,
       startDate,
       image: imgPath,
-      sectionItems: [],  // 項目ゼロで開始(必要なら「＋項目を追加」で足す)
+      sectionItems: [{ iid: genId(), key: "free-" + genId(), texts: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }],  // 空項目を1個だけ用意(あとは「＋項目を追加」で増やす)
       createdAt: new Date().toISOString()
     };
 
