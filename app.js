@@ -509,6 +509,9 @@ function renderSections(p) {
       + (item.files || []).map((f, i) => fileItemHtml(f, i, "material")).join("");
     const finalContent = (item.imagesFinal || []).map((p2, i) => imgItemHtml(p2, i, "final")).join("")
       + (item.filesFinal || []).map((f, i) => fileItemHtml(f, i, "final")).join("");
+    // 各サイドが空か(空なら横長の薄いバー、入っていれば正方形の追加口)
+    const materialEmpty = (item.images || []).length === 0 && (item.files || []).length === 0;
+    const finalEmpty = (item.imagesFinal || []).length === 0 && (item.filesFinal || []).length === 0;
 
     const textsHtml = (item.texts || []).map((t, i) => {
       const preview = (t && t.trim() !== "") ? escapeHtml(t) : "";
@@ -531,7 +534,6 @@ function renderSections(p) {
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
           <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
-          <button class="sec-add-img" data-iid="${escapeHtml(item.iid)}">+ 画像/ファイル</button>
           <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
         </div>
       </div>
@@ -548,20 +550,22 @@ function renderSections(p) {
           </div>
           <div class="sec-images">
             ${materialContent}
-            <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}" data-side="material" style="display:none">
+            <div class="sec-dropzone${materialEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="material" title="クリックまたはドラッグ&ドロップでアップロード">
               <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">素材をアップロード</span>
+              <span class="sec-dropzone-text">画像をアップロード</span>
             </div>
+            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="material" />
           </div>
         </div>
         <div class="sec-side">
           <div class="sec-side-label">完成品</div>
           <div class="sec-images">
             ${finalContent}
-            <div class="sec-dropzone" data-iid="${escapeHtml(item.iid)}" data-side="final" style="display:none">
+            <div class="sec-dropzone${finalEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="final" title="クリックまたはドラッグ&ドロップでアップロード">
               <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">完成品をアップロード</span>
+              <span class="sec-dropzone-text">画像をアップロード</span>
             </div>
+            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="final" />
           </div>
         </div>
       </div>
@@ -611,24 +615,19 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
     btn.addEventListener("click", () => addSectionText(btn.dataset.iid));
   });
-  // 「+ 画像/ファイル」で その項目の両方のドロップゾーンをトグル
-  wrap.querySelectorAll(".sec-add-img").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const section = btn.closest(".editor-section");
-      if (!section) return;
-      const dzs = section.querySelectorAll(".sec-dropzone");
-      const show = dzs[0] && dzs[0].style.display === "none";
-      dzs.forEach((dz) => { dz.style.display = show ? "flex" : "none"; });
-    });
-  });
   // 「右上の完成品を使用」プレースホルダを素材に追加
   wrap.querySelectorAll(".sec-use-final").forEach((btn) => {
     btn.addEventListener("click", () => addFinalPlaceholder(btn.dataset.iid));
   });
-  // ドロップゾーン(side別、ドラッグ&ドロップ専用)
+  // ドロップゾーン(side別): クリックでファイル選択 / ドラッグ&ドロップ
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
     const iid = dz.dataset.iid;
     const side = dz.dataset.side;
+    // クリックで同じside の hidden file input を開く
+    dz.addEventListener("click", () => {
+      const input = wrap.querySelector(`.sec-file-input[data-iid="${CSS.escape(iid)}"][data-side="${side}"]`);
+      if (input) input.click();
+    });
     dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
     dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
     dz.addEventListener("drop", (e) => {
@@ -637,6 +636,15 @@ function renderSections(p) {
       if (e.dataTransfer.files && e.dataTransfer.files.length) {
         addSectionImages(iid, side, e.dataTransfer.files);
       }
+    });
+  });
+  // ファイル選択(input change)でアップロード
+  wrap.querySelectorAll(".sec-file-input").forEach((input) => {
+    input.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files.length) {
+        addSectionImages(input.dataset.iid, input.dataset.side, e.target.files);
+      }
+      e.target.value = ""; // 同じファイルを連続選択できるようリセット
     });
   });
   // 画像削除
@@ -705,13 +713,10 @@ async function addBlankSectionItem() {
   try {
     await saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
-    // 追加した項目の画像ドロップゾーンを開いて、その位置までスクロール
+    // 追加した項目の位置までスクロール(アップロード口は常時表示)
     setTimeout(() => {
       const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
-      if (section) {
-        section.querySelectorAll(".sec-dropzone").forEach((dz) => { dz.style.display = "flex"; });
-        section.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      if (section) section.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
   } catch (err) {
     alert("追加失敗: " + err.message);
