@@ -1657,13 +1657,21 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-size: 14px;
   line-height: 1.6;
   padding: 9px 12px;
-  background: #ffffff;
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   text-overflow: ellipsis;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+/* ポインタを乗せたら背景を白くして浮き出させる */
+.sec-text-input:hover {
+  background: #ffffff;
+  border-color: var(--ink-mute);
+  box-shadow: 0 1px 4px rgba(27,26,23,0.08);
 }
 .sec-text-input:focus {
   outline: none;
+  background: #ffffff;
   border-color: var(--accent);
 }
 /* 「編集」ボタン(大きい画面を開く) */
