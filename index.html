@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.6.0" />
+<link rel="stylesheet" href="style.css?v=3.7.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.6.0</span>
+    <span class="version-badge">v3.7.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -52,7 +52,6 @@
     <button id="btn-view-toggle" class="btn-secondary btn-header" title="カード表示 / 画像一覧表示 を切り替え">🖼️ 画像一覧</button>
     <button id="btn-thumb-toggle" class="btn-secondary btn-header" title="サムネの高さを切り替え(正方形 / 縦長)" style="display:none">📐 縦長表示</button>
     <button id="btn-exclude-material" class="btn-secondary btn-header" title="素材を除外して表示(メイン画像+完成品のみ)" style="display:none">🚫 素材除外</button>
-    <button id="btn-section-mgr" class="btn-secondary btn-header" title="項目の初期値(名前・質問文)を管理">📑 初期項目管理</button>
     <button id="btn-add" class="btn-add">+ Add</button>
     <button id="btn-settings" class="btn-icon" title="接続設定">⚙</button>
   </div>
@@ -106,7 +105,7 @@
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
   <div class="modal-inner editor">
-    <!-- v3.6.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
+    <!-- v3.7.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
     <div id="editor-action-bar" class="editor-action-bar">
       <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
       <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
@@ -142,29 +141,6 @@
   </div>
 </div>
 
-<!-- ============== 項目管理モーダル ============== -->
-<div id="section-mgr-modal" class="modal" style="display:none">
-  <div class="modal-inner section-mgr-big">
-    <button class="modal-close" data-close="section-mgr-modal">×</button>
-    <h2>初期項目管理</h2>
-    <p class="auth-desc" style="margin-bottom:16px">新しい商品を作ったときや項目を追加したときの「初期値」を管理します。ここで決めた項目名・質問文が各商品の初期表示になり、商品ページでそれぞれ個別に上書きできます。</p>
-
-    <label class="field-label">新しい項目を追加</label>
-    <div style="display:flex; gap:8px">
-      <input id="section-mgr-new-name" type="text" placeholder="例: ラフ案、キャッチコピー、ターゲット分析" />
-      <button id="section-mgr-add" class="btn-primary" style="margin:0; flex-shrink:0">追加</button>
-    </div>
-
-    <label class="field-label" style="margin-top:24px">登録済み項目(▲▼で並び替え)</label>
-    <div id="section-mgr-list" class="tag-mgr-list"></div>
-    <p class="field-hint" style="margin-top:14px">※ 項目を削除すると、全商品のその項目の中身(テキスト・画像)も消えます。</p>
-
-    <div class="modal-actions">
-      <button id="section-mgr-close" class="btn-primary" style="margin:0">保存して閉じる</button>
-    </div>
-  </div>
-</div>
-
 <!-- 全画面テキストエディタ(分析欄の最大化) -->
 <div id="text-fullscreen" class="text-fullscreen" style="display:none">
   <div class="text-fullscreen-inner">
@@ -192,6 +168,6 @@
 </div>
 
 
-<script src="app.js?v=3.6.0"></script>
+<script src="app.js?v=3.7.0"></script>
 </body>
 </html>
