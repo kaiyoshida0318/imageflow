@@ -579,13 +579,16 @@ function renderSections(p) {
         <div class="sec-side">
           <div class="sec-side-label sec-side-label-row">
             <span>素材</span>
-            <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
+            <span class="sec-side-label-btns">
+              <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
+              <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
+            </span>
           </div>
           <div class="sec-images">
             ${materialContent}
             <div class="sec-dropzone${materialEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="material" title="クリックまたはドラッグ&ドロップでアップロード">
               <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">画像をアップロード</span>
+              <span class="sec-dropzone-text">画像を<br>アップロード</span>
             </div>
             <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="material" />
           </div>
@@ -596,7 +599,7 @@ function renderSections(p) {
             ${finalContent}
             <div class="sec-dropzone${finalEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="final" title="クリックまたはドラッグ&ドロップでアップロード">
               <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">画像をアップロード</span>
+              <span class="sec-dropzone-text">画像を<br>アップロード</span>
             </div>
             <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="final" />
           </div>
@@ -647,6 +650,10 @@ function renderSections(p) {
   // 「右上の完成品を使用」プレースホルダを素材に追加
   wrap.querySelectorAll(".sec-use-final").forEach((btn) => {
     btn.addEventListener("click", () => addFinalPlaceholder(btn.dataset.iid));
+  });
+  // 「上部の情報を使用」プレースホルダを素材に追加
+  wrap.querySelectorAll(".sec-use-top").forEach((btn) => {
+    btn.addEventListener("click", () => addTopPlaceholder(btn.dataset.iid));
   });
   // ドロップゾーン(side別): クリックでファイル選択 / ドラッグ&ドロップ
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
@@ -1011,6 +1018,40 @@ async function addFinalPlaceholder(iid) {
     await uploadFile(path, base64, `Add 'use final' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
     item.images.push(path);
     await saveData(`Add 'use final' placeholder: ${p.name}`, mergeCurrentProduct(p));
+    setHeadStatus("✓ 追加しました", "ok");
+    renderSections(p);
+    setTimeout(() => setHeadStatus(""), 1200);
+  } catch (err) {
+    setHeadStatus("✗ " + err.message, "err");
+  }
+}
+
+// 「↑上部の情報を使用」プレースホルダ画像。完成品用とは違う背景色(青み)。
+function topPlaceholderSvgBase64() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#dfe7ee" stroke="#5c7896" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#33485f" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="250" font-size="58" fill="#2f6db5">↑</text>
+    <text x="300" y="330" font-size="42" font-weight="700">上部の</text>
+    <text x="300" y="392" font-size="42" font-weight="700">情報を使用</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addTopPlaceholder(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.images)) item.images = [];
+  setHeadStatus("プレースホルダを追加中…");
+  try {
+    const base64 = topPlaceholderSvgBase64();
+    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-usetop.svg`;
+    await uploadFile(path, base64, `Add 'use top' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
+    item.images.push(path);
+    await saveData(`Add 'use top' placeholder: ${p.name}`, mergeCurrentProduct(p));
     setHeadStatus("✓ 追加しました", "ok");
     renderSections(p);
     setTimeout(() => setHeadStatus(""), 1200);
