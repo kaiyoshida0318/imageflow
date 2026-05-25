@@ -1026,11 +1026,11 @@ async function addFinalPlaceholder(iid) {
   }
 }
 
-// 「↑上部の情報を使用」プレースホルダ画像。完成品用とは違う背景色(青み)。
+// 「↑上部の情報を使用」プレースホルダ画像。完成品用とほぼ同じ配色で、矢印だけ青。
 function topPlaceholderSvgBase64() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-  <rect x="8" y="8" width="584" height="584" rx="14" fill="#dfe7ee" stroke="#5c7896" stroke-width="3" stroke-dasharray="14 10"/>
-  <g fill="#33485f" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
     <text x="300" y="250" font-size="58" fill="#2f6db5">↑</text>
     <text x="300" y="330" font-size="42" font-weight="700">上部の</text>
     <text x="300" y="392" font-size="42" font-weight="700">情報を使用</text>
