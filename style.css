@@ -1466,14 +1466,14 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   flex-direction: column;
   position: sticky;
-  top: 0;
+  /* sticky追従するボタンバー(高さ約52px)の下に来るようにする */
+  top: 60px;
 }
 .editor-col-right {
   display: flex;
   flex-direction: column;
   gap: 24px;
   min-width: 0;
-  padding-top: 44px;
 }
 .editor-head-img {
   position: relative;
@@ -1789,16 +1789,22 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* ========== ImageFlow v3.5.0: 編集ページ右上の3ボタン ========== */
 /* 役割: 保存=保存だけ / 保存×=保存して閉じる / ×=保存せず閉じる */
-/* position:fixed でスクロールしても常に右上に固定 */
+/* modal-inner.editor の内側に置き、position:sticky でパネルのスクロールに */
+/* 追従させて常に右上に貼り付ける。 */
 .editor-action-bar {
-  position: fixed;
-  top: calc(6vh - 18px);
-  right: calc(2vw + 16px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  z-index: 110;
+  /* パネル上端パディング(40px 48px)を打ち消して右上の角ピッタリに浮かせる */
+  margin: -40px -48px 8px 0;
+  padding: 8px 0 0;
+  pointer-events: none; /* バーの透明部分はクリックを透過 */
 }
+.editor-action-bar > * { pointer-events: auto; } /* ボタンは普通にクリック可 */
 .editor-act-btn {
   display: flex;
   align-items: center;
@@ -1847,8 +1853,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 @media (max-width: 720px) {
   .editor-action-bar {
-    top: 8px;
-    right: 8px;
+    /* スマホ時はパネルのpadding(24px 18px)に合わせて打ち消し */
+    margin: -24px -18px 6px 0;
     gap: 6px;
   }
   .editor-act-btn {
