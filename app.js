@@ -549,6 +549,7 @@ function renderSections(p) {
         <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
+          <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>`;
@@ -696,6 +697,10 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-text-edit").forEach((btn) => {
     btn.addEventListener("click", () => openTextFullscreen(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
   });
+  // 「コピー」ボタンで中身をクリップボードへ
+  wrap.querySelectorAll(".sec-text-copy").forEach((btn) => {
+    btn.addEventListener("click", () => copySectionText(btn));
+  });
   // テキスト追加(上/下それぞれ)
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
     btn.addEventListener("click", () => addSectionText(btn.dataset.iid, btn.dataset.pos));
@@ -804,6 +809,41 @@ function openTextFullscreen(iid, pos, idx) {
     area.setSelectionRange(0, 0);
     area.scrollTop = 0;
   }, 30);
+}
+
+// テキストの中身をクリップボードにコピー(押すと一瞬「✓」表示)
+async function copySectionText(btn) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, btn.dataset.iid);
+  if (!item) return;
+  const arr = item[textArrName(btn.dataset.pos)];
+  const idx = parseInt(btn.dataset.idx);
+  const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
+  const showOk = () => {
+    const orig = btn.textContent;
+    btn.textContent = "✓";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // フォールバック(古い環境)
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    showOk();
+  } catch (e) {
+    alert("コピーに失敗しました: " + e.message);
+  }
 }
 
 async function closeTextFullscreen() {
