@@ -36,14 +36,7 @@ let dataSha = null;
 let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let currentDetailId = null;
-let viewMode = (() => {
-  try { return localStorage.getItem("imageFlow.viewMode") === "gallery" ? "gallery" : "card"; }
-  catch { return "card"; }
-})();  // "card" or "gallery"(画像一覧)
-let galleryThumb = (() => {
-  try { return localStorage.getItem("imageFlow.galleryThumb") === "tall" ? "tall" : "square"; }
-  catch { return "square"; }
-})();  // "square"(正方形) or "tall"(縦長 750x1230)
+// v3.8.0: 表示は「画像一覧 + 縦長サムネ」固定。viewMode/galleryThumb は廃止。
 let galleryExcludeMaterial = (() => {
   try { return localStorage.getItem("imageFlow.galleryExcludeMaterial") === "1"; }
   catch { return false; }
@@ -364,49 +357,14 @@ function render() {
   }
   $("empty-state").style.display = "none";
 
-  if (viewMode === "gallery") {
-    renderGalleryView();
-  } else {
-    renderCardView();
-  }
+  // v3.8.0: 表示は画像一覧(縦長サムネ)のみ
+  renderGalleryView();
 }
 
-// カード表示(従来)
-function renderCardView() {
-  const gallery = $("gallery");
-  gallery.className = "gallery";
-  const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-
-  gallery.innerHTML = sorted.map((p) => {
-    const imgArea = p.image
-      ? `<div class="card-img"><img data-path="${escapeHtml(p.image)}" alt="" loading="lazy" /></div>`
-      : `<div class="card-img card-noimg"><span>画像なし</span></div>`;
-    return `
-    <div class="card" data-id="${escapeHtml(p.id)}">
-      ${imgArea}
-      <div class="card-body">
-        <div class="card-start-date">${escapeHtml(p.startDate || "—")}</div>
-        <h3 class="card-title">${escapeHtml(p.name || "無題")}</h3>
-        <div class="card-meta">
-          <span></span>
-          <span>${p.createdAt ? fmtDate(p.createdAt) : ""}</span>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-
-  document.querySelectorAll(".card-img img[data-path]").forEach((img) => {
-    loadImageInto(img, img.dataset.path);
-  });
-  document.querySelectorAll(".card").forEach((el) => {
-    el.addEventListener("click", () => openDetail(el.dataset.id));
-  });
-}
-
-// 画像一覧表示(1商品=横一列で全画像)
+// 画像一覧表示(1商品=横一列で全画像、縦長サムネ固定)
 function renderGalleryView() {
   const gallery = $("gallery");
-  gallery.className = "gallery-rows thumb-" + galleryThumb;
+  gallery.className = "gallery-rows thumb-tall";
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   gallery.innerHTML = sorted.map((p) => {
@@ -457,44 +415,21 @@ function renderGalleryView() {
   });
 }
 
-// 表示モード切り替え
-function toggleViewMode() {
-  viewMode = viewMode === "card" ? "gallery" : "card";
-  try { localStorage.setItem("imageFlow.viewMode", viewMode); } catch {}
-  const btn = $("btn-view-toggle");
-  btn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
-  updateThumbToggleVisibility();
-  render();
-}
-
-// サムネ高さボタンの表示/非表示(画像一覧のときだけ出す)
-function updateThumbToggleVisibility() {
-  const tb = $("btn-thumb-toggle");
-  if (tb) {
-    tb.style.display = (viewMode === "gallery") ? "" : "none";
-    tb.textContent = galleryThumb === "tall" ? "🔲 正方形表示" : "📐 縦長表示";
-  }
+// 素材除外ボタンの表示更新(画像一覧固定なので常に表示)
+function updateExcludeBtn() {
   const eb = $("btn-exclude-material");
   if (eb) {
-    eb.style.display = (viewMode === "gallery") ? "" : "none";
+    eb.style.display = "";
     eb.textContent = galleryExcludeMaterial ? "✅ 素材を表示" : "🚫 素材除外";
     eb.classList.toggle("active", galleryExcludeMaterial);
   }
-}
-
-// サムネ高さの切り替え(正方形 ⇔ 縦長)
-function toggleThumbMode() {
-  galleryThumb = galleryThumb === "square" ? "tall" : "square";
-  try { localStorage.setItem("imageFlow.galleryThumb", galleryThumb); } catch {}
-  updateThumbToggleVisibility();
-  render();
 }
 
 // 素材除外の切り替え
 function toggleExcludeMaterial() {
   galleryExcludeMaterial = !galleryExcludeMaterial;
   try { localStorage.setItem("imageFlow.galleryExcludeMaterial", galleryExcludeMaterial ? "1" : "0"); } catch {}
-  updateThumbToggleVisibility();
+  updateExcludeBtn();
   render();
 }
 
@@ -1553,9 +1488,7 @@ function bindEvents() {
   // × = 保存せず閉じる(B案: 今フォーカス中の欄も破棄)
   $("btn-close-nosave").addEventListener("click", closeWithoutSaving);
 
-  // 表示モード切り替え
-  $("btn-view-toggle").addEventListener("click", toggleViewMode);
-  $("btn-thumb-toggle").addEventListener("click", toggleThumbMode);
+  // 素材除外の切り替え(画像一覧固定)
   $("btn-exclude-material").addEventListener("click", toggleExcludeMaterial);
 
   // 商品情報インライン編集(blurで保存)
@@ -1608,10 +1541,8 @@ function bindEvents() {
 async function init() {
   $("loading").style.display = "block";
   $("gallery").innerHTML = "";
-  // 保存された表示モードに合わせてボタン文言を設定
-  const vbtn = $("btn-view-toggle");
-  if (vbtn) vbtn.textContent = viewMode === "gallery" ? "🔲 カード表示" : "🖼️ 画像一覧";
-  updateThumbToggleVisibility();
+  // 素材除外ボタンの文言・状態を初期化(画像一覧固定)
+  updateExcludeBtn();
   try {
     await loadData();
     render();
