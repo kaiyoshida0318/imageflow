@@ -1667,7 +1667,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: var(--accent);
 }
 /* 「編集」ボタン(大きい画面を開く) */
-.sec-text-edit {
+.sec-text-edit, .sec-text-copy {
   flex-shrink: 0;
   font-family: var(--mono);
   font-size: 11px;
@@ -1677,11 +1677,18 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink-soft);
   background: var(--card);
   transition: all 0.15s;
+  white-space: nowrap;
 }
-.sec-text-edit:hover {
+.sec-text-edit:hover, .sec-text-copy:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--bg-2);
+}
+/* コピー成功時の一瞬の表示 */
+.sec-text-copy.copied {
+  background: var(--ok);
+  color: #fff;
+  border-color: var(--ok);
 }
 .sec-text-area {
   flex: 1;
