@@ -2550,9 +2550,13 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* v3.16.0: 素材・完成品エリアを「画像5個ぴったり」の固定幅に。
    画像100px×5 + gap10px×4 + パディング12px×2 = 564px。
    1fr(伸縮)だと右側に余白が出るため固定幅にして左寄せ。 */
+/* v3.16.0→v3.16.2: 素材・完成品エリアを「画像5個ぴったり」の固定幅に。
+   中身: 画像100px×5 + gap10px×4 = 540px。
+   sec-side: padding12px×2 + border1px×2 = 26px。合計 約566px(570pxで4px余裕)。
+   (border-box計算で2px不足し5個目が折り返していたのを修正) */
 .sec-dual {
   display: grid;
-  grid-template-columns: 564px 564px;
+  grid-template-columns: 570px 570px;
   justify-content: start;
   gap: 12px;
   margin-bottom: 14px;
@@ -2632,9 +2636,9 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-shrink: 0;
 }
 .sec-file-item .sec-swap:hover { background: var(--accent); color: #fff; }
-/* v3.16.0→v3.16.1: 固定564px×2が入りきらない狭い画面でだけ縦積みに */
+/* v3.16.0→v3.16.2: 固定566px×2が入りきらない狭い画面でだけ縦積みに */
 @media (max-width: 1300px) {
-  .sec-dual { grid-template-columns: 564px; }
+  .sec-dual { grid-template-columns: 570px; }
 }
 @media (max-width: 720px) {
   .sec-dual { grid-template-columns: 1fr; justify-content: stretch; }
