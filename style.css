@@ -1973,7 +1973,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* テキスト欄の右のボタン群(拡大・削除を縦に) */
 .sec-text-btns {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -2306,20 +2307,22 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-dropzone-icon { font-size: 24px; line-height: 1; }
 .sec-dropzone-text { font-size: 10px; line-height: 1.4; padding: 0 8px; }
 
-/* v3.10.0: 空エリア用の横長・薄型アップロード口(正方形だと間延びするため) */
+/* v3.13.0→v3.14.0: 空エリアのアップロード口。横長バーをやめ、
+   小さめサイズで他の要素(ファイルチップ等)の隣に横並びさせる。
+   縦に伸びてスクロールが増えるのを防ぐ。 */
 .sec-dropzone.sec-dropzone-bar {
-  width: 100%;
-  height: 44px;
-  flex-direction: row;
-  gap: 8px;
+  width: 150px;
+  height: 72px;
+  flex-direction: column;
+  gap: 4px;
   border-width: 1px;
 }
 .sec-dropzone.sec-dropzone-bar .sec-dropzone-icon { font-size: 18px; }
-.sec-dropzone.sec-dropzone-bar .sec-dropzone-text { font-size: 12px; padding: 0; }
+.sec-dropzone.sec-dropzone-bar .sec-dropzone-text { font-size: 11px; padding: 0; }
 
 @media (max-width: 720px) {
   .sec-dropzone { width: 100px; height: 100px; }
-  .sec-dropzone.sec-dropzone-bar { width: 100%; height: 42px; }
+  .sec-dropzone.sec-dropzone-bar { width: 130px; height: 72px; }
 }
 
 /* ========== ImageFlow v2.5: 項目の追加/削除 ========== */
