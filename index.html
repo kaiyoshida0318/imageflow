@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.5.0" />
+<link rel="stylesheet" href="style.css?v=3.5.1" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.5.0</span>
+    <span class="version-badge">v3.5.1</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -105,13 +105,13 @@
 
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
-  <!-- v3.5.0: 右上に3ボタン(保存 / 保存して閉じる / 保存せず閉じる)を固定 -->
-  <div id="editor-action-bar" class="editor-action-bar">
-    <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
-    <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
-    <button id="btn-close-nosave" class="editor-act-btn editor-act-close" title="保存せず閉じる">×</button>
-  </div>
   <div class="modal-inner editor">
+    <!-- v3.5.1: パネル右上に3ボタン(保存 / 保存して閉じる / 保存せず閉じる)。stickyでスクロール追従 -->
+    <div id="editor-action-bar" class="editor-action-bar">
+      <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
+      <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
+      <button id="btn-close-nosave" class="editor-act-btn editor-act-close" title="保存せず閉じる">×</button>
+    </div>
 
     <!-- 編集ページ本体: 左右2カラム -->
     <div class="editor-layout">
@@ -192,6 +192,6 @@
 </div>
 
 
-<script src="app.js?v=3.5.0"></script>
+<script src="app.js?v=3.5.1"></script>
 </body>
 </html>
