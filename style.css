@@ -1787,40 +1787,78 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   .sec-img-item { width: 100px; height: 100px; }
 }
 
-/* ========== ImageFlow v1.8: ×(保存)ボタンをモーダル外側に ========== */
-.editor-close-save {
+/* ========== ImageFlow v3.5.0: 編集ページ右上の3ボタン ========== */
+/* 役割: 保存=保存だけ / 保存×=保存して閉じる / ×=保存せず閉じる */
+/* position:fixed でスクロールしても常に右上に固定 */
+.editor-action-bar {
   position: fixed;
   top: calc(6vh - 18px);
-  right: calc(2vw + 24px);
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
+  right: calc(2vw + 16px);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  line-height: 1;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-  transition: background 0.15s, transform 0.15s;
+  gap: 8px;
   z-index: 110;
 }
-.editor-close-save:hover {
+.editor-act-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 44px;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  transition: background 0.15s, transform 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.editor-act-btn:hover { transform: scale(1.05); }
+/* 保存だけ(継続) - 落ち着いたインク色 */
+.editor-act-save {
+  padding: 0 20px;
+  background: var(--ink);
+  color: #fff;
+}
+.editor-act-save:hover { background: var(--accent); }
+/* 保存して閉じる - アクセントのレンガ色で主アクション感 */
+.editor-act-save-close {
+  padding: 0 18px;
   background: var(--accent);
-  transform: scale(1.05);
+  color: #fff;
 }
-.close-save-label {
-  font-size: 10px;
-  margin-top: 2px;
-  letter-spacing: 0.05em;
+.editor-act-save-close:hover { background: #a8380f; }
+.editor-act-save-close .act-x {
+  font-size: 17px;
+  margin-left: 2px;
+  opacity: 0.9;
 }
+/* 保存せず閉じる - 控えめな白丸 */
+.editor-act-close {
+  width: 44px;
+  padding: 0;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 22px;
+  border: 1px solid var(--line);
+}
+.editor-act-close:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
 @media (max-width: 720px) {
-  .editor-close-save { top: 8px; right: 8px; width: 50px; height: 50px; font-size: 19px; }
+  .editor-action-bar {
+    top: 8px;
+    right: 8px;
+    gap: 6px;
+  }
+  .editor-act-btn {
+    height: 40px;
+    font-size: 13px;
+  }
+  .editor-act-save { padding: 0 14px; }
+  .editor-act-save-close { padding: 0 13px; }
+  .editor-act-close { width: 40px; font-size: 20px; }
 }
-
-
 
 /* ========== ImageFlow v1.6: テキスト拡大/縮小トグル ========== */
 /* テキスト欄の右のボタン群(拡大・削除を縦に) */
