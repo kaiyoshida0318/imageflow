@@ -31,10 +31,25 @@ function ensureItemArrays(it) {
   if (!Array.isArray(it.files)) it.files = [];
   if (!Array.isArray(it.imagesFinal)) it.imagesFinal = [];
   if (!Array.isArray(it.filesFinal)) it.filesFinal = [];
-  // 旧形式: texts[] が残っていれば textsTop[] に移す
-  if (Array.isArray(it.texts) && it.texts.length && !Array.isArray(it.textsTop)) {
-    it.textsTop = it.texts.slice();
+  // 旧形式の移行(1度だけ): textsTop が未定義のときに、
+  //   question(指示文) → texts(回答) の順で textsTop に統合する。
+  // v3.12で廃止した question欄の中身もここで救済して表示に復活させる。
+  if (!Array.isArray(it.textsTop)) {
+    const merged = [];
+    if (it.question !== undefined && it.question !== null && String(it.question).trim() !== "") {
+      merged.push(String(it.question));
+    }
+    if (Array.isArray(it.texts)) {
+      it.texts.forEach((t) => { if (t !== undefined && t !== null && String(t).trim() !== "") merged.push(String(t)); });
+    }
+    it.textsTop = merged;
+  } else {
+    // textsTop が既にある場合でも、未移行の question が残っていれば先頭に取り込む
+    if (it.question !== undefined && it.question !== null && String(it.question).trim() !== "") {
+      it.textsTop.unshift(String(it.question));
+    }
   }
+  delete it.question;
   delete it.texts;
   if (!Array.isArray(it.textsTop)) it.textsTop = [];
   if (!Array.isArray(it.textsBottom)) it.textsBottom = [];
