@@ -21,14 +21,28 @@ const DEFAULT_SECTIONS = [
 function getItem(p, iid) {
   if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
   const it = p.sectionItems.find((x) => x.iid === iid);
-  if (it) {
-    if (!Array.isArray(it.texts)) it.texts = [];
-    if (!Array.isArray(it.images)) it.images = [];
-    if (!Array.isArray(it.files)) it.files = [];
-    if (!Array.isArray(it.imagesFinal)) it.imagesFinal = [];
-    if (!Array.isArray(it.filesFinal)) it.filesFinal = [];
-  }
+  if (it) ensureItemArrays(it);
   return it;
+}
+
+// item の各配列を保証し、旧 texts[] を textsTop[] へ移行する
+function ensureItemArrays(it) {
+  if (!Array.isArray(it.images)) it.images = [];
+  if (!Array.isArray(it.files)) it.files = [];
+  if (!Array.isArray(it.imagesFinal)) it.imagesFinal = [];
+  if (!Array.isArray(it.filesFinal)) it.filesFinal = [];
+  // 旧形式: texts[] が残っていれば textsTop[] に移す
+  if (Array.isArray(it.texts) && it.texts.length && !Array.isArray(it.textsTop)) {
+    it.textsTop = it.texts.slice();
+  }
+  delete it.texts;
+  if (!Array.isArray(it.textsTop)) it.textsTop = [];
+  if (!Array.isArray(it.textsBottom)) it.textsBottom = [];
+}
+
+// pos("top"/"bottom") に応じたテキスト配列名
+function textArrName(pos) {
+  return pos === "bottom" ? "textsBottom" : "textsTop";
 }
 
 let auth = null;
@@ -162,14 +176,10 @@ function migrateProducts() {
       // v3.7.0: 雛形廃止のため、空でも自動で項目を並べない(項目ゼロのまま)
       delete p.sectionData; // 旧形式は破棄
     }
-    // 各itemの配列を保証
+    // 各itemの配列を保証(textsTop/textsBottomへの移行含む)
     p.sectionItems.forEach((it) => {
-      if (!Array.isArray(it.texts)) it.texts = [];
-      if (!Array.isArray(it.images)) it.images = [];
-      if (!Array.isArray(it.files)) it.files = [];
-      if (!Array.isArray(it.imagesFinal)) it.imagesFinal = [];
-      if (!Array.isArray(it.filesFinal)) it.filesFinal = [];
       if (!it.iid) it.iid = genId();
+      ensureItemArrays(it);
     });
   });
 }
@@ -514,35 +524,42 @@ function renderSections(p) {
     const materialEmpty = (item.images || []).length === 0;
     const finalEmpty = (item.imagesFinal || []).length === 0;
 
-    const textsHtml = (item.texts || []).map((t, i) => {
+    // テキスト1件分のHTML(pos: top/bottom)
+    const textItemHtml = (t, i, pos) => {
       const preview = (t && t.trim() !== "") ? escapeHtml(t) : "";
       const isEmpty = preview === "";
+      // CSSキャッシュに依存せず確実に1行省略させるため、インラインstyleで直接指定。
+      // テキスト内に改行(\n)があっても1行に収まるよう、高さも1行分に固定して隠す。
+      const inlineStyle = "flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;height:2.6em;line-height:2.6em;";
       return `
       <div class="sec-text-item">
-        <div class="sec-text-preview${isEmpty ? " sec-text-preview-empty" : ""}" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="クリックして編集">${isEmpty ? "クリックしてテキストを入力…" : preview}</div>
+        <div class="sec-text-preview${isEmpty ? " sec-text-preview-empty" : ""}" style="${inlineStyle}" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="クリックして編集">${isEmpty ? "クリックしてテキストを入力…" : preview}</div>
         <div class="sec-text-btns">
-          <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="このテキストを削除">×</button>
+          <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>`;
-    }).join("");
-    const effectiveQ = (item.question !== undefined && item.question !== null && item.question !== "")
-      ? item.question
-      : (def && def.question ? def.question : "");
+    };
+    // テキストブロック(pos: top/bottom)。各ブロックに「+ テキスト」ボタンを置く
+    const textsBlockHtml = (pos) => {
+      const arr = item[textArrName(pos)] || [];
+      const items = arr.map((t, i) => textItemHtml(t, i, pos)).join("");
+      return `
+      <div class="sec-texts" data-pos="${pos}">
+        ${items}
+        <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}">+ テキスト</button>
+      </div>`;
+    };
+
     return `
     <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
       <div class="editor-section-head editor-section-head-notitle">
         <div class="editor-section-actions">
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
-          <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}">+ テキスト</button>
           <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
         </div>
       </div>
-      <div class="sec-question-wrap" data-iid="${escapeHtml(item.iid)}">
-        ${effectiveQ
-          ? `<div class="sec-question" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の質問文を編集">💬 ${escapeHtml(effectiveQ)} <span class="sec-question-edit">✎</span></div>`
-          : `<div class="sec-question sec-question-empty" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の質問文を追加">＋ 質問文を追加</div>`}
-      </div>
+      ${textsBlockHtml("top")}
       <div class="sec-dual">
         <div class="sec-side">
           <div class="sec-side-label sec-side-label-row">
@@ -570,7 +587,7 @@ function renderSections(p) {
           </div>
         </div>
       </div>
-      <div class="sec-texts">${textsHtml || '<span class="sec-empty">テキストなし</span>'}</div>
+      ${textsBlockHtml("bottom")}
     </div>`;
   }).join("");
 
@@ -611,10 +628,6 @@ function renderSections(p) {
   // ファイル削除
   wrap.querySelectorAll(".sec-file-remove").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionFile(btn.dataset.iid, btn.dataset.side, parseInt(btn.dataset.idx)));
-  });
-  // テキスト追加
-  wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
-    btn.addEventListener("click", () => addSectionText(btn.dataset.iid));
   });
   // 「右上の完成品を使用」プレースホルダを素材に追加
   wrap.querySelectorAll(".sec-use-final").forEach((btn) => {
@@ -658,15 +671,15 @@ function renderSections(p) {
   });
   // テキスト削除
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, parseInt(btn.dataset.idx)));
+    btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
   });
   // テキストプレビュークリックで全画面エディタを開く
   wrap.querySelectorAll(".sec-text-preview").forEach((el) => {
-    el.addEventListener("click", () => openTextFullscreen(el.dataset.iid, parseInt(el.dataset.idx)));
+    el.addEventListener("click", () => openTextFullscreen(el.dataset.iid, el.dataset.pos, parseInt(el.dataset.idx)));
   });
-  // 質問文クリックで編集
-  wrap.querySelectorAll(".sec-question").forEach((el) => {
-    el.addEventListener("click", () => editSectionQuestionInline(el.dataset.iid));
+  // テキスト追加(上/下それぞれ)
+  wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
+    btn.addEventListener("click", () => addSectionText(btn.dataset.iid, btn.dataset.pos));
   });
   // 項目ごと削除
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
@@ -708,7 +721,8 @@ async function addBlankSectionItem() {
   p.sectionItems.push({
     iid,
     key: "free-" + iid,   // 雛形に紐づかない一意キー
-    texts: [""],          // テキスト欄を最初から1つ表示
+    textsTop: [""],       // 画像の上のテキスト欄(空1個)
+    textsBottom: [""],    // 画像の下のテキスト欄(空1個)
     images: [], files: [], imagesFinal: [], filesFinal: []
   });
   try {
@@ -732,7 +746,7 @@ async function removeSectionItem(iid) {
   if (!item) return;
   const def = sectionDefs.find((d) => d.key === item.key);
   const label = def ? def.label : "この項目";
-  const hasContent = (item.texts && item.texts.length) || allItemPaths(item).length;
+  const hasContent = (item.textsTop && item.textsTop.length) || (item.textsBottom && item.textsBottom.length) || allItemPaths(item).length;
   if (!confirm(`「${label}」を削除しますか?${hasContent ? "\n中のテキスト・画像・ファイルも削除されます。" : ""}`)) return;
   try {
     for (const path of allItemPaths(item)) {
@@ -747,114 +761,24 @@ async function removeSectionItem(iid) {
   }
 }
 
-// 商品ページ上で質問文をインライン編集(このitemだけに保存)
-function editSectionQuestionInline(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const def = sectionDefs.find((d) => d.key === item.key);
-  const wrap = document.querySelector(`.sec-question-wrap[data-iid="${CSS.escape(iid)}"]`);
-  if (!wrap) return;
-  const currentQ = (item.question !== undefined && item.question !== null && item.question !== "")
-    ? item.question
-    : (def && def.question ? def.question : "");
-  const placeholder = (def && def.question) ? `デフォルト: ${def.question}` : "例: この商品の強み・弱みは？";
-  wrap.innerHTML = `
-    <textarea class="sec-question-input" rows="2" placeholder="${escapeHtml(placeholder)}">${escapeHtml(currentQ)}</textarea>
-    <div class="sec-question-btns">
-      <button class="sec-q-save">💾 保存(この商品のみ)</button>
-      <button class="sec-q-cancel">キャンセル</button>
-      ${(item.question !== undefined && item.question !== null && item.question !== "") ? '<button class="sec-q-reset">雛形に戻す</button>' : ''}
-    </div>
-  `;
-  const input = wrap.querySelector(".sec-question-input");
-  input.focus();
-  const save = async (resetToDefault) => {
-    const newQ = resetToDefault ? "" : input.value.trim();
-    try {
-      if (resetToDefault || newQ === "") delete item.question;
-      else item.question = newQ;
-      await saveData(`Edit product question: ${p.name}`, mergeCurrentProduct(p));
-      renderSections(p);
-    } catch (err) {
-      alert("保存失敗: " + err.message);
-      renderSections(p);
-    }
-  };
-  wrap.querySelector(".sec-q-save").addEventListener("click", () => save(false));
-  wrap.querySelector(".sec-q-cancel").addEventListener("click", () => renderSections(p));
-  const resetBtn = wrap.querySelector(".sec-q-reset");
-  if (resetBtn) resetBtn.addEventListener("click", () => save(true));
-}
-
-// 項目タイトルをインライン編集(このitemだけに保存)
-function editSectionTitleInline(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const def = sectionDefs.find((d) => d.key === item.key);
-  const h3 = document.querySelector(`.editor-section-title[data-iid="${CSS.escape(iid)}"]`);
-  if (!h3) return;
-  const currentLabel = (item.label !== undefined && item.label !== null && item.label !== "")
-    ? item.label
-    : (def ? def.label : "");
-  const defaultLabel = def ? def.label : "";
-  const isOverridden = (item.label !== undefined && item.label !== null && item.label !== "");
-  h3.innerHTML = `
-    <input class="sec-title-input" type="text" value="${escapeHtml(currentLabel)}" placeholder="${escapeHtml(defaultLabel || "項目名")}" />
-    <span class="sec-title-btns">
-      <button class="sec-title-save">💾</button>
-      <button class="sec-title-cancel">×</button>
-      ${isOverridden && defaultLabel ? '<button class="sec-title-reset">初期値に戻す</button>' : ''}
-    </span>
-  `;
-  const input = h3.querySelector(".sec-title-input");
-  input.focus();
-  input.select();
-  const save = async (resetToDefault) => {
-    const newLabel = resetToDefault ? "" : input.value.trim();
-    try {
-      if (resetToDefault || newLabel === "" || newLabel === defaultLabel) {
-        delete item.label;
-      } else {
-        item.label = newLabel;
-      }
-      await saveData(`Edit section title: ${p.name}`, mergeCurrentProduct(p));
-      renderSections(p);
-    } catch (err) {
-      alert("保存失敗: " + err.message);
-      renderSections(p);
-    }
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); save(false); }
-    else if (e.key === "Escape") { e.preventDefault(); renderSections(p); }
-  });
-  h3.querySelector(".sec-title-save").addEventListener("click", () => save(false));
-  h3.querySelector(".sec-title-cancel").addEventListener("click", () => renderSections(p));
-  const resetBtn = h3.querySelector(".sec-title-reset");
-  if (resetBtn) resetBtn.addEventListener("click", () => save(true));
-}
-
 function getCurrentProduct() {
   return products.find((x) => x.id === currentDetailId);
 }
 
 // ---------- 全画面テキストエディタ ----------
-let fsEditing = null; // { iid, idx }
+let fsEditing = null; // { iid, pos, idx }
 
-function openTextFullscreen(iid, idx) {
+function openTextFullscreen(iid, pos, idx) {
   const p = getCurrentProduct();
   if (!p) return;
   const item = getItem(p, iid);
-  if (!item || item.texts[idx] === undefined) return;
-  fsEditing = { iid, idx };
-  const def = sectionDefs.find((d) => d.key === item.key);
-  $("text-fullscreen-title").textContent = def ? def.label : "テキスト";
+  if (!item) return;
+  const arr = item[textArrName(pos)];
+  if (!arr || arr[idx] === undefined) return;
+  fsEditing = { iid, pos, idx };
+  $("text-fullscreen-title").textContent = "テキスト";
   const area = $("text-fullscreen-area");
-  area.value = item.texts[idx];
+  area.value = arr[idx];
   $("text-fullscreen").style.display = "flex";
   setTimeout(() => {
     area.focus();
@@ -866,15 +790,16 @@ function openTextFullscreen(iid, idx) {
 async function closeTextFullscreen() {
   if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
   const p = getCurrentProduct();
-  const { iid, idx } = fsEditing;
+  const { iid, pos, idx } = fsEditing;
   const newVal = $("text-fullscreen-area").value.trim();
   $("text-fullscreen").style.display = "none";
   fsEditing = null;
   if (!p) return;
   const item = getItem(p, iid);
-  if (!item || item.texts[idx] === undefined) return;
-  if (item.texts[idx] === newVal) { renderSections(p); return; }
-  item.texts[idx] = newVal;
+  const arr = item ? item[textArrName(pos)] : null;
+  if (!item || !arr || arr[idx] === undefined) return;
+  if (arr[idx] === newVal) { renderSections(p); return; }
+  arr[idx] = newVal;
   try {
     await saveData(`Update text (fullscreen): ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
@@ -884,48 +809,50 @@ async function closeTextFullscreen() {
 }
 
 function sectionLabelOf(item) {
-  const def = sectionDefs.find((d) => d.key === item.key);
-  return def ? def.label : (item.key || "項目");
+  return "項目";
 }
 
-// テキスト追加
-async function addSectionText(iid) {
+// テキスト追加(pos: top/bottom)
+async function addSectionText(iid, pos) {
   const p = getCurrentProduct();
   if (!p) return;
   const item = getItem(p, iid);
   if (!item) return;
-  item.texts.push("");
+  const arr = item[textArrName(pos)];
+  arr.push("");
   renderSections(p);
   // 追加した空テキストの全画面エディタをすぐ開く
   setTimeout(() => {
-    openTextFullscreen(iid, item.texts.length - 1);
+    openTextFullscreen(iid, pos, arr.length - 1);
   }, 30);
 }
 
-// テキスト確定(blur時)
-async function commitSectionText(iid, idx, value) {
+// テキスト確定(blur時)※現在は全画面エディタ経由のため通常未使用
+async function commitSectionText(iid, pos, idx, value) {
   if (manualSaving) return;
   const p = getCurrentProduct();
   if (!p) return;
   const item = getItem(p, iid);
-  if (!item || item.texts[idx] === undefined) return;
+  const arr = item ? item[textArrName(pos)] : null;
+  if (!item || !arr || arr[idx] === undefined) return;
   const newVal = value.trim();
-  if (item.texts[idx] === newVal) return;
-  item.texts[idx] = newVal;
+  if (arr[idx] === newVal) return;
+  arr[idx] = newVal;
   try {
-    await saveData(`Update text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Update text: ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
     alert("保存失敗: " + err.message);
   }
 }
 
-async function removeSectionText(iid, idx) {
+async function removeSectionText(iid, pos, idx) {
   const p = getCurrentProduct();
   if (!p) return;
   const item = getItem(p, iid);
   if (!item) return;
   if (!confirm("このテキストを削除しますか?")) return;
-  item.texts.splice(idx, 1);
+  const arr = item[textArrName(pos)];
+  arr.splice(idx, 1);
   try {
     await saveData(`Remove text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
@@ -1374,7 +1301,7 @@ async function saveProduct() {
       name,
       startDate,
       image: imgPath,
-      sectionItems: [{ iid: genId(), key: "free-" + genId(), texts: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }],  // 空項目を1個だけ用意(あとは「＋項目を追加」で増やす)
+      sectionItems: [{ iid: genId(), key: "free-" + genId(), textsTop: [""], textsBottom: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }],  // 空項目を1個だけ用意(あとは「＋項目を追加」で増やす)
       createdAt: new Date().toISOString()
     };
 
