@@ -1451,29 +1451,39 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .modal-inner.editor {
   max-width: 1500px;
   width: 96vw;
-  min-height: 88vh;
-  padding: 40px 48px;
+  height: 88vh;          /* 高さを固定して内側でスクロール制御 */
+  max-height: 88vh;
+  padding: 0;            /* パディングは各エリアで個別に持たせる */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;      /* パネル自体はスクロールしない */
 }
 
-/* 編集ページ: 左右2カラムレイアウト */
+/* 編集ページ: 左右2カラムレイアウト(残り高さいっぱい) */
 .editor-layout {
   display: grid;
   grid-template-columns: 300px 1fr;
   gap: 32px;
-  align-items: start;
+  align-items: stretch;
+  flex: 1;               /* ボタン帯の下、残り高さを全部使う */
+  min-height: 0;         /* gridの子をoverflowさせるのに必須 */
+  padding: 0 48px 0;
 }
 .editor-col-left {
   display: flex;
   flex-direction: column;
-  position: sticky;
-  /* sticky追従するボタンバー(高さ約52px)の下に来るようにする */
-  top: 60px;
+  /* 固定(スクロールしない)。長い場合だけ自分でスクロール */
+  overflow-y: auto;
+  padding: 24px 0 28px;
 }
 .editor-col-right {
   display: flex;
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;      /* ★ここ(セクション群)だけがスクロールする */
+  padding: 24px 8px 28px 0;
 }
 .editor-head-img {
   position: relative;
@@ -1780,31 +1790,41 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 @media (max-width: 720px) {
-  .modal-inner.editor { padding: 24px 18px; }
-  .editor-layout { grid-template-columns: 1fr; gap: 16px; }
-  .editor-col-left { position: static; }
+  /* スマホは1カラム。固定スクロール構造を解除し、パネル全体が縦スクロール */
+  .modal-inner.editor {
+    height: auto;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: block;
+  }
+  .editor-action-bar { position: sticky; top: 0; z-index: 20; }
+  .editor-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    display: grid;
+    padding: 0 18px 24px;
+    min-height: 0;
+  }
+  .editor-col-left { overflow: visible; padding: 8px 0 0; }
+  .editor-col-right { overflow: visible; padding: 0; }
   .editor-head-img { max-width: 220px; margin: 0 auto; }
   .sec-img-item { width: 100px; height: 100px; }
 }
 
-/* ========== ImageFlow v3.5.0: 編集ページ右上の3ボタン ========== */
+/* ========== ImageFlow v3.6.0: 編集ページ上部の固定ボタン帯 ========== */
 /* 役割: 保存=保存だけ / 保存×=保存して閉じる / ×=保存せず閉じる */
-/* modal-inner.editor の内側に置き、position:sticky でパネルのスクロールに */
-/* 追従させて常に右上に貼り付ける。 */
+/* パネル最上部に不透明な帯として固定。スクロールしない(本体は右カラムが動く)。 */
 .editor-action-bar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  flex-shrink: 0;        /* 縮まない固定ヘッダー */
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  /* パネル上端パディング(40px 48px)を打ち消して右上の角ピッタリに浮かせる */
-  margin: -40px -48px 8px 0;
-  padding: 8px 0 0;
-  pointer-events: none; /* バーの透明部分はクリックを透過 */
+  padding: 16px 48px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
 }
-.editor-action-bar > * { pointer-events: auto; } /* ボタンは普通にクリック可 */
 .editor-act-btn {
   display: flex;
   align-items: center;
@@ -1816,7 +1836,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.14);
   transition: background 0.15s, transform 0.15s, color 0.15s;
   white-space: nowrap;
 }
@@ -1853,8 +1873,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 @media (max-width: 720px) {
   .editor-action-bar {
-    /* スマホ時はパネルのpadding(24px 18px)に合わせて打ち消し */
-    margin: -24px -18px 6px 0;
+    padding: 12px 18px;
     gap: 6px;
   }
   .editor-act-btn {
