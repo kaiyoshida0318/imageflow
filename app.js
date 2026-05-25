@@ -540,16 +540,15 @@ function renderSections(p) {
     const finalEmpty = (item.imagesFinal || []).length === 0;
 
     // テキスト1件分のHTML(pos: top/bottom)
+    // 1行のinputでその場編集。長文は横にはみ出さず途中まで表示。
+    // 「編集」ボタンで全画面エディタ(大きい画面)を開ける。
     const textItemHtml = (t, i, pos) => {
-      const preview = (t && t.trim() !== "") ? escapeHtml(t) : "";
-      const isEmpty = preview === "";
-      // CSSキャッシュに依存せず確実に1行省略させるため、インラインstyleで直接指定。
-      // テキスト内に改行(\n)があっても1行に収まるよう、高さも1行分に固定して隠す。
-      const inlineStyle = "flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;height:2.6em;line-height:2.6em;";
+      const val = (t !== undefined && t !== null) ? escapeHtml(String(t)) : "";
       return `
       <div class="sec-text-item">
-        <div class="sec-text-preview${isEmpty ? " sec-text-preview-empty" : ""}" style="${inlineStyle}" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="クリックして編集">${isEmpty ? "クリックしてテキストを入力…" : preview}</div>
+        <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
+          <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>`;
@@ -688,9 +687,14 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
   });
-  // テキストプレビュークリックで全画面エディタを開く
-  wrap.querySelectorAll(".sec-text-preview").forEach((el) => {
-    el.addEventListener("click", () => openTextFullscreen(el.dataset.iid, el.dataset.pos, parseInt(el.dataset.idx)));
+  // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
+  wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
+    inp.addEventListener("blur", () => commitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), inp.value));
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+  });
+  // 「編集」ボタンで大きい画面(全画面エディタ)を開く
+  wrap.querySelectorAll(".sec-text-edit").forEach((btn) => {
+    btn.addEventListener("click", () => openTextFullscreen(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
   });
   // テキスト追加(上/下それぞれ)
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
@@ -836,9 +840,10 @@ async function addSectionText(iid, pos) {
   const arr = item[textArrName(pos)];
   arr.push("");
   renderSections(p);
-  // 追加した空テキストの全画面エディタをすぐ開く
+  // 追加した空の1行input欄にフォーカス(その場で打てる)
   setTimeout(() => {
-    openTextFullscreen(iid, pos, arr.length - 1);
+    const inputs = document.querySelectorAll(`.sec-text-input[data-iid="${CSS.escape(iid)}"][data-pos="${pos}"]`);
+    if (inputs.length) inputs[inputs.length - 1].focus();
   }, 30);
 }
 
