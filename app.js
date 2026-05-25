@@ -166,12 +166,7 @@ function migrateProducts() {
           }
         });
       }
-      // それでも空なら、デフォルトで定義を一通り並べる(選択肢2の挙動)
-      if (p.sectionItems.length === 0) {
-        sectionDefs.forEach((def) => {
-          p.sectionItems.push({ iid: genId(), key: def.key, texts: [], images: [] });
-        });
-      }
+      // v3.7.0: 雛形廃止のため、空でも自動で項目を並べない(項目ゼロのまま)
       delete p.sectionData; // 旧形式は破棄
     }
     // 各itemの配列を保証
@@ -505,7 +500,7 @@ function toggleExcludeMaterial() {
 
 // ---------- 商品詳細 ----------
 function closeAllModals() {
-  ["add-modal", "detail-modal", "section-mgr-modal", "text-fullscreen"].forEach((id) => {
+  ["add-modal", "detail-modal", "text-fullscreen"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
@@ -554,9 +549,12 @@ function renderSections(p) {
 
   const sectionsHtml = p.sectionItems.map((item, secIdx) => {
     const def = sectionDefs.find((d) => d.key === item.key);
-    const label = (item.label !== undefined && item.label !== null && item.label !== "")
+    // 表示名: item.label優先 → 雛形def.label → どちらも無ければ空(プレースホルダ表示)
+    const rawLabel = (item.label !== undefined && item.label !== null && item.label !== "")
       ? item.label
-      : (def ? def.label : (item.key || "項目"));
+      : (def ? def.label : "");
+    const label = rawLabel;
+    const labelIsEmpty = (rawLabel === "");
 
     // 画像・ファイルのアイテムHTMLを生成(side: material / final)
     const imgItemHtml = (path, i, side) => `
@@ -592,7 +590,7 @@ function renderSections(p) {
     return `
     <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
       <div class="editor-section-head">
-        <h3 class="editor-section-title" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の項目名を編集">${escapeHtml(label)} <span class="sec-title-edit">✎</span></h3>
+        <h3 class="editor-section-title${labelIsEmpty ? " sec-title-empty" : ""}" data-iid="${escapeHtml(item.iid)}" title="クリックでこの商品の項目名を編集">${labelIsEmpty ? "項目名を入力…" : escapeHtml(label)} <span class="sec-title-edit">✎</span></h3>
         <div class="editor-section-actions">
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
           <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
@@ -635,11 +633,10 @@ function renderSections(p) {
     </div>`;
   }).join("");
 
-  // 末尾に「+ 項目を追加」エリア
+  // 末尾に「+ 項目を追加」ボタン(押すと空白項目を1つ追加)
   const addAreaHtml = `
     <div class="sec-add-item-area">
       <button id="sec-add-item-btn" class="sec-add-item-btn">＋ 項目を追加</button>
-      <div id="sec-add-item-menu" class="sec-add-item-menu" style="display:none"></div>
     </div>`;
 
   wrap.innerHTML = sectionsHtml + addAreaHtml;
@@ -742,25 +739,8 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-move").forEach((btn) => {
     btn.addEventListener("click", () => moveSectionItem(btn.dataset.iid, btn.dataset.dir === "up" ? -1 : 1));
   });
-  // +項目を追加
-  $("sec-add-item-btn").addEventListener("click", toggleAddItemMenu);
-}
-
-// 「+項目を追加」メニューの開閉
-function toggleAddItemMenu() {
-  const menu = $("sec-add-item-menu");
-  if (menu.style.display === "block") { menu.style.display = "none"; return; }
-  if (sectionDefs.length === 0) {
-    menu.innerHTML = '<div class="sec-add-item-empty">初期項目管理から項目を追加してください</div>';
-  } else {
-    menu.innerHTML = sectionDefs.map((def) =>
-      `<button class="sec-add-item-option" data-key="${escapeHtml(def.key)}">${escapeHtml(def.label)}</button>`
-    ).join("");
-    menu.querySelectorAll(".sec-add-item-option").forEach((btn) => {
-      btn.addEventListener("click", () => addSectionItem(btn.dataset.key));
-    });
-  }
-  menu.style.display = "block";
+  // +項目を追加(空白の新規項目を1つ追加)
+  $("sec-add-item-btn").addEventListener("click", addBlankSectionItem);
 }
 
 // 項目を上下に移動
@@ -781,15 +761,32 @@ async function moveSectionItem(iid, delta) {
   }
 }
 
-// 項目を追加(同じkeyを複数回でもOK)
-async function addSectionItem(key) {
+// 空白の項目を1つ追加(雛形に依存しない)
+// key/label を持たせず、texts に空1つを入れてテキスト欄を最初から表示。
+async function addBlankSectionItem() {
   const p = getCurrentProduct();
   if (!p) return;
   if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
-  p.sectionItems.push({ iid: genId(), key, texts: [], images: [] });
+  const iid = genId();
+  p.sectionItems.push({
+    iid,
+    key: "free-" + iid,   // 雛形に紐づかない一意キー
+    texts: [""],          // テキスト欄を最初から1つ表示
+    images: [], files: [], imagesFinal: [], filesFinal: []
+  });
   try {
-    await saveData(`Add section item: ${p.name}`, mergeCurrentProduct(p));
+    await saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
+    // 追加した項目の画像ドロップゾーンを開き、タイトル編集にフォーカス
+    setTimeout(() => {
+      const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
+      if (section) {
+        section.querySelectorAll(".sec-dropzone").forEach((dz) => { dz.style.display = "flex"; });
+        section.scrollIntoView({ behavior: "smooth", block: "center" });
+        const titleEl = section.querySelector(".editor-section-title[data-iid]");
+        if (titleEl) editSectionTitleInline(iid);
+      }
+    }, 50);
   } catch (err) {
     alert("追加失敗: " + err.message);
   }
@@ -1360,199 +1357,6 @@ function closeLightbox() {
   const ni = $("lightbox-next-img"); if (ni) ni.src = "";
 }
 
-// ---------- 項目管理 ----------
-function openSectionManager() {
-  closeAllModals();
-  $("section-mgr-new-name").value = "";
-  renderSectionManager();
-  $("section-mgr-modal").style.display = "flex";
-  setTimeout(() => $("section-mgr-new-name").focus(), 50);
-}
-
-function renderSectionManager() {
-  const list = $("section-mgr-list");
-  if (sectionDefs.length === 0) {
-    list.innerHTML = '<div class="tag-mgr-empty">項目がまだありません。上から追加してください。</div>';
-    return;
-  }
-  // 各項目(key)が何商品で中身を持っているか集計
-  const usage = {};
-  products.forEach((p) => {
-    if (!Array.isArray(p.sectionItems)) return;
-    const keysWithContent = new Set();
-    p.sectionItems.forEach((it) => {
-      if ((it.texts && it.texts.length) || (it.images && it.images.length)) {
-        keysWithContent.add(it.key);
-      }
-    });
-    keysWithContent.forEach((k) => { usage[k] = (usage[k] || 0) + 1; });
-  });
-
-  list.innerHTML = sectionDefs.map((def, i) => `
-    <div class="tag-mgr-item section-mgr-item" data-key="${escapeHtml(def.key)}">
-      <div class="section-mgr-main">
-        <span class="tag-mgr-item-name">${escapeHtml(def.label)}</span>
-        <span class="tag-mgr-item-count">${usage[def.key] || 0} 商品で使用</span>
-        ${i > 0 ? `<button class="tag-mgr-btn" data-action="up" data-key="${escapeHtml(def.key)}" title="上へ">▲</button>` : '<span style="width:30px"></span>'}
-        ${i < sectionDefs.length - 1 ? `<button class="tag-mgr-btn" data-action="down" data-key="${escapeHtml(def.key)}" title="下へ">▼</button>` : '<span style="width:30px"></span>'}
-        <button class="tag-mgr-btn" data-action="question" data-key="${escapeHtml(def.key)}">雛形編集</button>
-        <button class="tag-mgr-btn" data-action="rename" data-key="${escapeHtml(def.key)}">名前変更</button>
-        <button class="tag-mgr-btn danger" data-action="delete" data-key="${escapeHtml(def.key)}">削除</button>
-      </div>
-      <div class="section-mgr-question">${def.question ? '💬 (雛形) ' + escapeHtml(def.question) : '<span class="section-mgr-noq">雛形なし</span>'}</div>
-    </div>
-  `).join("");
-
-  list.querySelectorAll(".tag-mgr-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.dataset.key;
-      const action = btn.dataset.action;
-      if (action === "up") moveSectionDef(key, -1);
-      else if (action === "down") moveSectionDef(key, 1);
-      else if (action === "rename") startRenameSectionDef(key);
-      else if (action === "question") startEditQuestion(key);
-      else if (action === "delete") deleteSectionDef(key);
-    });
-  });
-}
-
-// 質問文の編集
-function startEditQuestion(key) {
-  const def = sectionDefs.find((d) => d.key === key);
-  if (!def) return;
-  const item = document.querySelector(`#section-mgr-list .section-mgr-item[data-key="${CSS.escape(key)}"] .section-mgr-question`);
-  if (!item) return;
-  const oldQ = def.question || "";
-  item.innerHTML = `
-    <textarea class="section-mgr-q-input" rows="2" placeholder="例: この商品の強み・弱みは？競合との違いは？">${escapeHtml(oldQ)}</textarea>
-    <div class="section-mgr-q-btns">
-      <button class="tag-mgr-btn" data-action="q-confirm">💾 保存</button>
-      <button class="tag-mgr-btn" data-action="q-cancel">キャンセル</button>
-    </div>
-  `;
-  const input = item.querySelector(".section-mgr-q-input");
-  input.focus();
-  const confirm = async () => {
-    const newQ = input.value.trim();
-    if (newQ === oldQ) { renderSectionManager(); return; }
-    try {
-      def.question = newQ || undefined;
-      await saveData(`Edit question: ${def.label}`);
-      renderSectionManager();
-    } catch (err) {
-      alert("保存失敗: " + err.message);
-      def.question = oldQ || undefined;
-      renderSectionManager();
-    }
-  };
-  item.querySelector('[data-action="q-confirm"]').addEventListener("click", confirm);
-  item.querySelector('[data-action="q-cancel"]').addEventListener("click", renderSectionManager);
-}
-
-async function moveSectionDef(key, delta) {
-  const idx = sectionDefs.findIndex((d) => d.key === key);
-  if (idx === -1) return;
-  const newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= sectionDefs.length) return;
-  const [item] = sectionDefs.splice(idx, 1);
-  sectionDefs.splice(newIdx, 0, item);
-  try {
-    await saveData(`Reorder section: ${item.label}`);
-    renderSectionManager();
-  } catch (err) {
-    alert("並び替え失敗: " + err.message);
-  }
-}
-
-function startRenameSectionDef(key) {
-  const def = sectionDefs.find((d) => d.key === key);
-  if (!def) return;
-  const item = document.querySelector(`#section-mgr-list .tag-mgr-item[data-key="${CSS.escape(key)}"]`);
-  if (!item) return;
-  const oldLabel = def.label;
-  item.innerHTML = `
-    <input class="tag-mgr-edit-input" type="text" value="${escapeHtml(oldLabel)}" />
-    <button class="tag-mgr-btn" data-action="confirm">OK</button>
-    <button class="tag-mgr-btn" data-action="cancel">キャンセル</button>
-  `;
-  const input = item.querySelector(".tag-mgr-edit-input");
-  input.focus();
-  input.select();
-  const confirm = async () => {
-    const newLabel = input.value.trim();
-    if (!newLabel) { alert("名前を入力してください"); return; }
-    if (newLabel === oldLabel) { renderSectionManager(); return; }
-    try {
-      def.label = newLabel;
-      await saveData(`Rename section: ${oldLabel} -> ${newLabel}`);
-      renderSectionManager();
-    } catch (err) {
-      alert("変更失敗: " + err.message);
-      def.label = oldLabel;
-      renderSectionManager();
-    }
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); confirm(); }
-    else if (e.key === "Escape") { e.preventDefault(); renderSectionManager(); }
-  });
-  item.querySelector('[data-action="confirm"]').addEventListener("click", confirm);
-  item.querySelector('[data-action="cancel"]').addEventListener("click", renderSectionManager);
-}
-
-async function deleteSectionDef(key) {
-  const def = sectionDefs.find((d) => d.key === key);
-  if (!def) return;
-  // この項目(key)のインスタンスを持つ商品数
-  let count = 0;
-  products.forEach((p) => {
-    if (Array.isArray(p.sectionItems) && p.sectionItems.some((it) => it.key === key)) count++;
-  });
-  const msg = count > 0
-    ? `項目「${def.label}」を削除しますか?\n${count}商品に並んでいるこの項目(中身含む)も全て削除されます。`
-    : `項目「${def.label}」を削除しますか?`;
-  if (!confirm(msg)) return;
-
-  try {
-    for (const p of products) {
-      if (!Array.isArray(p.sectionItems)) continue;
-      // この項目の全インスタンスの画像・ファイルを削除
-      for (const it of p.sectionItems) {
-        if (it.key === key) {
-          for (const path of allItemPaths(it)) {
-            try { await deleteFile(path, null, `Delete section file: ${p.id}`); }
-            catch (e) { console.warn("削除失敗(続行):", e); }
-          }
-        }
-      }
-      p.sectionItems = p.sectionItems.filter((it) => it.key !== key);
-    }
-    sectionDefs = sectionDefs.filter((d) => d.key !== key);
-    await saveData(`Delete section: ${def.label}`);
-    renderSectionManager();
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-async function addSectionDef() {
-  const label = $("section-mgr-new-name").value.trim();
-  if (!label) { alert("項目名を入力してください"); return; }
-  if (sectionDefs.some((d) => d.label === label)) {
-    alert("同じ名前の項目が既にあります");
-    return;
-  }
-  try {
-    const key = "sec-" + genId();
-    sectionDefs.push({ key, label });
-    await saveData(`Add section: ${label}`);
-    $("section-mgr-new-name").value = "";
-    renderSectionManager();
-  } catch (err) {
-    alert("追加失敗: " + err.message);
-  }
-}
-
 async function deleteProduct() {
   const p = products.find((x) => x.id === currentDetailId);
   if (!p) return;
@@ -1644,7 +1448,7 @@ async function saveProduct() {
       name,
       startDate,
       image: imgPath,
-      sectionItems: sectionDefs.map((def) => ({ iid: genId(), key: def.key, texts: [], images: [], files: [], imagesFinal: [], filesFinal: [] })),
+      sectionItems: [],  // 項目ゼロで開始(必要なら「＋項目を追加」で足す)
       createdAt: new Date().toISOString()
     };
 
@@ -1749,36 +1553,10 @@ function bindEvents() {
   // × = 保存せず閉じる(B案: 今フォーカス中の欄も破棄)
   $("btn-close-nosave").addEventListener("click", closeWithoutSaving);
 
-  // 項目管理
-  $("btn-section-mgr").addEventListener("click", openSectionManager);
   // 表示モード切り替え
   $("btn-view-toggle").addEventListener("click", toggleViewMode);
   $("btn-thumb-toggle").addEventListener("click", toggleThumbMode);
   $("btn-exclude-material").addEventListener("click", toggleExcludeMaterial);
-  $("section-mgr-add").addEventListener("click", addSectionDef);
-  $("section-mgr-new-name").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); addSectionDef(); }
-  });
-  // 項目管理: 保存して閉じる(質問文を編集中ならそれも保存)
-  $("section-mgr-close").addEventListener("click", async () => {
-    const input = document.querySelector("#section-mgr-list .section-mgr-q-input");
-    if (input) {
-      // 編集中の質問文を確定保存
-      const item = input.closest(".section-mgr-item");
-      const key = item ? item.dataset.key : null;
-      const def = sectionDefs.find((d) => d.key === key);
-      if (def) {
-        const newQ = input.value.trim();
-        if ((def.question || "") !== newQ) {
-          def.question = newQ || undefined;
-          try { await saveData(`Edit question: ${def.label}`); }
-          catch (err) { alert("保存失敗: " + err.message); return; }
-        }
-      }
-    }
-    $("section-mgr-modal").style.display = "none";
-    render();
-  });
 
   // 商品情報インライン編集(blurで保存)
   $("edit-product-name").addEventListener("blur", (e) => commitProductField("name", e.target.value));
