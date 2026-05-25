@@ -1449,8 +1449,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* ========== ImageFlow v1.2: 商品編集ページ ========== */
 .modal-inner.editor {
-  max-width: 1500px;
-  width: 96vw;
+  max-width: 1700px;
+  width: 98vw;
   height: 88vh;          /* 高さを固定して内側でスクロール制御 */
   max-height: 88vh;
   padding: 0;            /* パディングは各エリアで個別に持たせる */
@@ -1462,12 +1462,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* 編集ページ: 左右2カラムレイアウト(残り高さいっぱい) */
 .editor-layout {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 32px;
+  grid-template-columns: 280px 1fr;
+  gap: 28px;
   align-items: stretch;
   flex: 1;               /* ボタン帯の下、残り高さを全部使う */
   min-height: 0;         /* gridの子をoverflowさせるのに必須 */
-  padding: 0 48px 0;
+  padding: 0 36px 0;
 }
 .editor-col-left {
   display: flex;
@@ -1610,8 +1610,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .sec-img-item {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 100px;
+  height: 100px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -1904,7 +1904,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px 48px;
+  padding: 16px 36px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   border-radius: 6px 6px 0 0;
@@ -2277,8 +2277,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* ========== ImageFlow v2.4: 項目ごとの画像ドロップゾーン ========== */
 .sec-dropzone {
-  width: 120px;
-  height: 120px;
+  width: 100px;
+  height: 100px;
   border: 2px dashed var(--line);
   border-radius: var(--radius);
   display: flex;
@@ -2304,8 +2304,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--accent);
   transform: scale(1.02);
 }
-.sec-dropzone-icon { font-size: 24px; line-height: 1; }
-.sec-dropzone-text { font-size: 10px; line-height: 1.4; padding: 0 8px; }
+.sec-dropzone-icon { font-size: 20px; line-height: 1; }
+.sec-dropzone-text { font-size: 10px; line-height: 1.4; padding: 0 6px; }
 
 /* v3.13.0→v3.14.0: 空エリアのアップロード口。横長バーをやめ、
    小さめサイズで他の要素(ファイルチップ等)の隣に横並びさせる。
