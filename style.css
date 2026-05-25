@@ -2406,6 +2406,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: color 0.15s;
 }
 .editor-section-title[data-iid]:hover { color: var(--accent); }
+/* v3.7.0: 名前未入力の項目タイトル(プレースホルダ表示) */
+.editor-section-title.sec-title-empty {
+  color: var(--ink-mute);
+  font-style: italic;
+  font-weight: 400;
+}
 .sec-title-edit {
   font-size: 11px;
   opacity: 0.4;
