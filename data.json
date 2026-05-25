@@ -75,13 +75,10 @@
           "iid": "mpkuk7t8gvwvze",
           "key": "analysis",
           "texts": [],
-          "images": []
-        },
-        {
-          "iid": "mpkuk8rq450sde",
-          "key": "analysis",
-          "texts": [],
-          "images": []
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
         }
       ]
     }
