@@ -1647,7 +1647,41 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-text-item {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+}
+/* v3.13.0: 1行テキスト入力欄(その場編集)。長文は横にはみ出さず途中まで表示 */
+.sec-text-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 9px 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-overflow: ellipsis;
+}
+.sec-text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+/* 「編集」ボタン(大きい画面を開く) */
+.sec-text-edit {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--card);
+  transition: all 0.15s;
+}
+.sec-text-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
 }
 .sec-text-area {
   flex: 1;
