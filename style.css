@@ -1462,12 +1462,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* 編集ページ: 左右2カラムレイアウト(残り高さいっぱい) */
 .editor-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 28px;
+  grid-template-columns: 240px 1fr;
+  gap: 24px;
   align-items: stretch;
   flex: 1;               /* ボタン帯の下、残り高さを全部使う */
   min-height: 0;         /* gridの子をoverflowさせるのに必須 */
-  padding: 0 36px 0;
+  padding: 0 24px 0;
 }
 .editor-col-left {
   display: flex;
@@ -1904,7 +1904,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px 36px;
+  padding: 16px 24px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   border-radius: 6px 6px 0 0;
@@ -2554,7 +2554,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: grid;
   grid-template-columns: 564px 564px;
   justify-content: start;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 14px;
 }
 .sec-side {
@@ -2632,8 +2632,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-shrink: 0;
 }
 .sec-file-item .sec-swap:hover { background: var(--accent); color: #fff; }
-/* v3.16.0: 固定564px×2が入りきらない画面では素材/完成品を縦積みに */
-@media (max-width: 1500px) {
+/* v3.16.0→v3.16.1: 固定564px×2が入りきらない狭い画面でだけ縦積みに */
+@media (max-width: 1300px) {
   .sec-dual { grid-template-columns: 564px; }
 }
 @media (max-width: 720px) {
