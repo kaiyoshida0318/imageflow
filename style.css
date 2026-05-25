@@ -1560,6 +1560,11 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   margin-bottom: 14px;
   gap: 10px;
 }
+/* v3.9.0: タイトル無しヘッダー(操作ボタンだけを右寄せ) */
+.editor-section-head-notitle {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
 .editor-section-title {
   font-family: var(--serif);
   font-size: 18px;
@@ -1652,6 +1657,32 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   line-height: 1.8;
   min-height: 200px;
   background: #ffffff;
+}
+/* v3.9.0: テキストは1行プレビュー(クリックで全画面エディタ) */
+.sec-text-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.7;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  cursor: text;
+  /* 1行に省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sec-text-preview:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-text-preview-empty {
+  color: var(--ink-mute);
+  font-style: italic;
 }
 .sec-text-remove {
   flex-shrink: 0;
