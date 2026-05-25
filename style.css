@@ -2626,16 +2626,16 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   background: var(--bg-2);
   color: var(--ink);
 }
-/* 「上部の情報を使用」ボタン: 完成品用と区別できる青みの配色 */
+/* 「上部の情報を使用」ボタン: 完成品用とほぼ同じ配色 */
 .sec-use-top {
-  color: #2f6db5;
-  border-color: #b8cadd;
-  background: #eef3f8;
+  color: var(--ink-soft);
+  border-color: var(--line);
+  background: var(--card);
 }
 .sec-use-top:hover {
-  border-color: #2f6db5;
-  background: #dfe7ee;
-  color: #24557f;
+  border-color: var(--ink-soft);
+  background: var(--bg-2);
+  color: var(--ink);
 }
 /* ⇔ 反対側へ移動ボタン */
 .sec-swap {
