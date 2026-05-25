@@ -1659,6 +1659,25 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   background: #ffffff;
 }
 /* v3.9.0: テキストは1行プレビュー(クリックで全画面エディタ) */
+/* v3.11.0: 確実に1行省略させるため詳細度を上げ !important で強制 */
+.sec-texts .sec-text-item .sec-text-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.7;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  cursor: text;
+  /* 1行に省略(強制) */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-height: 2.7em;  /* 念のため高さも1行分に制限 */
+  transition: border-color 0.15s, background 0.15s;
+}
 .sec-text-preview {
   flex: 1;
   min-width: 0;
