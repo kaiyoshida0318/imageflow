@@ -1,7 +1,8 @@
 /* ==============================================================
-   ImageFlow — Frontend app (v1.1.0)
+   ImageFlow — Frontend app (v3.5.0)
    商品レコード中心の構成。GitHub REST API で data.json と
    images/ , csv/ を直接 commit する。
+   v3.5.0: 編集ページ右上に3ボタン(保存 / 保存して閉じる / 保存せず閉じる)を固定。
    ============================================================== */
 
 const STORAGE_KEY = "imageFlow.auth.v1";
@@ -1162,16 +1163,18 @@ async function swapSide(iid, kind, side, idx) {
 }
 
 // ---------- 手動保存(右上の保存ボタン) ----------
+// forClose: trueなら閉じる用途(保存失敗をalertでなくconsoleに)。
+// 戻り値: 保存に成功したか(falseは「保存できなかった/中断」)。
 async function saveAllCurrent(forClose) {
   const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return;
+  if (!p) return false;
   manualSaving = true;
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
   const name = $("edit-product-name").value.trim();
   const startDate = $("edit-start-date").value.trim();
-  if (!name) { alert("商品名は空にできません"); manualSaving = false; return; }
+  if (!name) { alert("商品名は空にできません"); manualSaving = false; return false; }
   p.name = name;
   p.startDate = startDate;
   document.querySelectorAll(".sec-text-area").forEach((ta) => {
@@ -1184,12 +1187,42 @@ async function saveAllCurrent(forClose) {
   try {
     await saveData(`Save product: ${p.name}`, mergeCurrentProduct(p));
     render();
+    return true;
   } catch (err) {
     if (!forClose) alert("保存失敗: " + err.message);
     else console.error("保存失敗:", err);
+    return false;
   } finally {
     manualSaving = false;
   }
+}
+
+// 保存だけして編集を継続(右上「保存」)
+async function saveOnlyKeepOpen() {
+  const ok = await saveAllCurrent(false);
+  if (ok) {
+    setHeadStatus("✓ 保存しました", "ok");
+    setTimeout(() => setHeadStatus(""), 1200);
+  }
+}
+
+// 保存して閉じる(右上「保存×」)
+async function saveAndClose() {
+  await saveAllCurrent(true);
+  $("detail-modal").style.display = "none";
+}
+
+// 保存せず閉じる(右上「×」)
+// B案: 今フォーカス中の欄の未確定分も保存せずに破棄する。
+// manualSaving を立ててから blur することで、blur保存(commitSectionText等)をスキップさせる。
+function closeWithoutSaving() {
+  manualSaving = true;
+  if (document.activeElement && typeof document.activeElement.blur === "function") {
+    document.activeElement.blur();
+  }
+  $("detail-modal").style.display = "none";
+  // blurによる非同期保存が走らないよう、少し後にフラグを戻す
+  setTimeout(() => { manualSaving = false; }, 0);
 }
 
 // ---------- 商品情報インライン編集 ----------
@@ -1707,11 +1740,14 @@ function bindEvents() {
 
   $("btn-save").addEventListener("click", saveProduct);
   $("btn-delete").addEventListener("click", deleteProduct);
-  // ×(保存): 保存してから閉じる
-  $("btn-close-save").addEventListener("click", async () => {
-    await saveAllCurrent(true);
-    $("detail-modal").style.display = "none";
-  });
+
+  // v3.5.0: 編集ページ右上の3ボタン
+  // 保存 = 保存だけして開いたまま継続
+  $("btn-save-only").addEventListener("click", saveOnlyKeepOpen);
+  // 保存× = 保存して閉じる
+  $("btn-save-close").addEventListener("click", saveAndClose);
+  // × = 保存せず閉じる(B案: 今フォーカス中の欄も破棄)
+  $("btn-close-nosave").addEventListener("click", closeWithoutSaving);
 
   // 項目管理
   $("btn-section-mgr").addEventListener("click", openSectionManager);
