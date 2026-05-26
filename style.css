@@ -2702,6 +2702,16 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 /* ========== ImageFlow v3.3: 素材除外ボタン ========== */
+/* v3.20.0: 2段表示(上=状態 / 下=小さい切り替え案内) */
+#btn-exclude-material {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  gap: 1px;
+}
+.btn-2line-main { font-size: 12px; font-weight: 600; }
+.btn-2line-sub { font-size: 9px; opacity: 0.6; font-weight: 400; }
 /* v3.4.0: アクティブ状態のトーンを落とす(派手なオレンジ→落ち着いたインク系) */
 .btn-header.active {
   background: var(--bg-2);
