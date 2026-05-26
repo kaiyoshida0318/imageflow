@@ -2625,7 +2625,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   gap: 6px;
 }
-.sec-use-final, .sec-use-top {
+.sec-use-final, .sec-use-top, .sec-use-topall {
   font-family: var(--sans);
   font-size: 10.5px;
   font-weight: 500;
@@ -2638,7 +2638,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   white-space: nowrap;
   transition: all 0.15s;
 }
-.sec-use-final:hover {
+.sec-use-final:hover, .sec-use-topall:hover {
   border-color: var(--ink-soft);
   background: var(--bg-2);
   color: var(--ink);
