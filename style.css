@@ -2706,6 +2706,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   padding: 10px 8px 4px;
 }
