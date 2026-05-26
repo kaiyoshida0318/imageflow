@@ -77,6 +77,10 @@ let galleryWrap = (() => {
   catch { return false; }
 })();
 
+// 1行表示時のページング: 0始まり。15枚刻みで表示範囲を切り替える。
+const GALLERY_PAGE_SIZE = 15;
+let galleryPage = 0;
+
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
 let manualSaving = false; // 手動保存ボタン処理中はblur自動保存をスキップ
@@ -392,14 +396,66 @@ function render() {
   renderGalleryView();
 }
 
+// 1行表示時のページ送りボタン(1-15 / 16-30 …)。全商品で最大の画像枚数からページ数を決める。
+function renderGalleryPager(sortedProducts) {
+  const pager = $("gallery-pager");
+  if (!pager) return;
+  // 全体表示モードではページング不要
+  if (galleryWrap) {
+    pager.style.display = "none";
+    pager.innerHTML = "";
+    return;
+  }
+  // 全商品の中で最大の画像枚数
+  let maxImgs = 0;
+  sortedProducts.forEach((p) => {
+    const n = collectAllImages(p, galleryExcludeMaterial).length;
+    if (n > maxImgs) maxImgs = n;
+  });
+  // 15枚以下ならページ送り不要(全部1ページに収まる)
+  if (maxImgs <= GALLERY_PAGE_SIZE) {
+    pager.style.display = "none";
+    pager.innerHTML = "";
+    galleryPage = 0;
+    return;
+  }
+  const pageCount = Math.ceil(maxImgs / GALLERY_PAGE_SIZE);
+  // 現在ページが範囲外なら補正
+  if (galleryPage >= pageCount) galleryPage = pageCount - 1;
+  let html = '<span class="pager-label">表示:</span>';
+  for (let i = 0; i < pageCount; i++) {
+    const from = i * GALLERY_PAGE_SIZE + 1;
+    const to = Math.min((i + 1) * GALLERY_PAGE_SIZE, maxImgs);
+    const active = i === galleryPage ? " active" : "";
+    html += `<button class="pager-btn${active}" data-page="${i}">${from}-${to}</button>`;
+  }
+  pager.innerHTML = html;
+  pager.style.display = "flex";
+  pager.querySelectorAll(".pager-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      galleryPage = parseInt(btn.dataset.page);
+      render();
+    });
+  });
+}
+
 // 画像一覧表示(1商品=横一列で全画像、縦長サムネ固定)
 function renderGalleryView() {
   const gallery = $("gallery");
   gallery.className = "gallery-rows thumb-tall" + (galleryWrap ? " gallery-wrap" : "");
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
+  // ページャ更新(1行モードのみ)。全商品で最大の画像枚数を基準にページ数を決める。
+  renderGalleryPager(sorted);
+  // 1行モードでページングする場合の表示範囲
+  const usePaging = !galleryWrap;
+  const start = galleryPage * GALLERY_PAGE_SIZE;
+  const end = start + GALLERY_PAGE_SIZE;
+
   gallery.innerHTML = sorted.map((p) => {
-    const imgs = collectAllImages(p, galleryExcludeMaterial);
+    const allImgs = collectAllImages(p, galleryExcludeMaterial);
+    // 1行モード: 該当ページの15枚だけ。全体表示モード: 全部。
+    const imgs = usePaging ? allImgs.slice(start, end) : allImgs;
     const thumbsHtml = imgs.length
       ? imgs.map((path) => `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`).join("")
       : '<span class="row-noimg">画像なし</span>';
