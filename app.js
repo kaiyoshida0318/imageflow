@@ -71,6 +71,12 @@ let galleryExcludeMaterial = (() => {
   catch { return false; }
 })();  // true: 素材を除外(メイン画像+完成品のみ)
 
+// 画像一覧の行表示: false=1行(横スクロール) / true=複数行(折り返して全体表示)
+let galleryWrap = (() => {
+  try { return localStorage.getItem("imageFlow.galleryWrap") === "1"; }
+  catch { return false; }
+})();
+
 // 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
 let saveChain = Promise.resolve();
 let manualSaving = false; // 手動保存ボタン処理中はblur自動保存をスキップ
@@ -389,7 +395,7 @@ function render() {
 // 画像一覧表示(1商品=横一列で全画像、縦長サムネ固定)
 function renderGalleryView() {
   const gallery = $("gallery");
-  gallery.className = "gallery-rows thumb-tall";
+  gallery.className = "gallery-rows thumb-tall" + (galleryWrap ? " gallery-wrap" : "");
   const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   gallery.innerHTML = sorted.map((p) => {
@@ -455,6 +461,24 @@ function toggleExcludeMaterial() {
   galleryExcludeMaterial = !galleryExcludeMaterial;
   try { localStorage.setItem("imageFlow.galleryExcludeMaterial", galleryExcludeMaterial ? "1" : "0"); } catch {}
   updateExcludeBtn();
+  render();
+}
+
+// 行表示ボタンの表示更新
+function updateWrapBtn() {
+  const wb = $("btn-wrap-toggle");
+  if (wb) {
+    // wrap中は「1行に戻す」、1行中は「全体表示」を案内
+    wb.textContent = galleryWrap ? "↔ 1行表示" : "⊞ 全体表示";
+    wb.classList.toggle("active", galleryWrap);
+  }
+}
+
+// 1行(横スクロール) ⇔ 複数行(折り返し全体表示) の切り替え
+function toggleGalleryWrap() {
+  galleryWrap = !galleryWrap;
+  try { localStorage.setItem("imageFlow.galleryWrap", galleryWrap ? "1" : "0"); } catch {}
+  updateWrapBtn();
   render();
 }
 
@@ -1509,6 +1533,7 @@ function bindEvents() {
 
   // 素材除外の切り替え(画像一覧固定)
   $("btn-exclude-material").addEventListener("click", toggleExcludeMaterial);
+  $("btn-wrap-toggle").addEventListener("click", toggleGalleryWrap);
 
   // 商品情報インライン編集(blurで保存)
   $("edit-product-name").addEventListener("blur", (e) => commitProductField("name", e.target.value));
@@ -1562,6 +1587,7 @@ async function init() {
   $("gallery").innerHTML = "";
   // 素材除外ボタンの文言・状態を初期化(画像一覧固定)
   updateExcludeBtn();
+  updateWrapBtn();
   try {
     await loadData();
     render();
