@@ -451,7 +451,9 @@ function updateExcludeBtn() {
   const eb = $("btn-exclude-material");
   if (eb) {
     eb.style.display = "";
-    eb.textContent = galleryExcludeMaterial ? "✅ 素材を表示" : "🚫 素材除外";
+    // 上段=現在の状態、下段=小さい字で「→切り替え」案内
+    const state = galleryExcludeMaterial ? "素材を除外中" : "素材を表示中";
+    eb.innerHTML = `<span class="btn-2line-main">${state}</span><span class="btn-2line-sub">→切り替え</span>`;
     eb.classList.toggle("active", galleryExcludeMaterial);
   }
 }
