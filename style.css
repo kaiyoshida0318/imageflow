@@ -2702,8 +2702,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 /* ========== ImageFlow v3.3: 素材除外ボタン ========== */
-/* v3.20.0: 2段表示(上=状態 / 下=小さい切り替え案内) */
-#btn-exclude-material {
+/* v3.20.0: 2段表示(上=状態 / 下=小さい切り替え案内)。素材・全体表示の両ボタン */
+#btn-exclude-material, #btn-wrap-toggle {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
