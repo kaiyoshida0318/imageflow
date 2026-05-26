@@ -2258,11 +2258,28 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: background 0.15s;
 }
 .row-open-btn:hover { background: var(--accent); }
+/* デフォルト(1行モード): 折り返さず横スクロール。1商品=横1行 */
 .row-thumbs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+/* 全体表示モード: 折り返して全画像を一覧。サムネも少し小さく一覧性UP */
+.gallery-wrap .row-thumbs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.gallery-wrap .row-thumb {
+  width: 64px;
+  height: 105px; /* 64 * 1230/750 ≒ 105 (縦長比率を維持) */
+}
+/* thumb-tall(詳細度が高い)に確実に勝たせる */
+.gallery-rows.thumb-tall.gallery-wrap .row-thumb {
+  width: 64px;
+  height: 105px;
 }
 .row-thumb {
   width: 88px;
