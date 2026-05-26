@@ -482,7 +482,8 @@ function renderGalleryView() {
         img.removeAttribute("data-loading");
       });
       img.dataset.loading = "1";
-      img.addEventListener("click", () => {
+      img.addEventListener("click", (e) => {
+        e.stopPropagation(); // 画像クリックは拡大のみ(行クリックの編集遷移を抑止)
         // クリック時点で読み込み済みのsrcを使ってまとまりを構成
         const list = thumbs.map((t, j) => t.src || srcs[j]).filter(Boolean);
         // クリックしたサムネが list 内で何番目かを求める
@@ -492,6 +493,9 @@ function renderGalleryView() {
         showLightbox(list, idx);
       });
     });
+    // 行の何もないところをクリックしても編集画面へ(画像・編集ボタンは個別処理が優先)
+    row.style.cursor = "pointer";
+    row.addEventListener("click", () => openDetail(row.dataset.id));
   });
   // 「編集」ボタンで編集ページへ
   gallery.querySelectorAll(".row-open-btn").forEach((btn) => {
