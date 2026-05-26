@@ -470,8 +470,9 @@ function toggleExcludeMaterial() {
 function updateWrapBtn() {
   const wb = $("btn-wrap-toggle");
   if (wb) {
-    // wrap中は「1行に戻す」、1行中は「全体表示」を案内
-    wb.textContent = galleryWrap ? "↔ 1行表示" : "⊞ 全体表示";
+    // 上段=現在の状態、下段=小さい字で「→切り替え」案内
+    const state = galleryWrap ? "全体表示中" : "1行表示中";
+    wb.innerHTML = `<span class="btn-2line-main">${state}</span><span class="btn-2line-sub">→切り替え</span>`;
     wb.classList.toggle("active", galleryWrap);
   }
 }
