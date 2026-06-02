@@ -1515,6 +1515,25 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   white-space: nowrap;
 }
 .editor-img-change:hover { background: var(--accent); }
+/* v3.30.0: メイン画像右上の削除ボタン */
+.editor-img-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background: rgba(27,26,23,0.75);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  z-index: 2;
+}
+.editor-img-remove:hover { background: var(--accent); }
 .editor-head-info { display: flex; flex-direction: column; }
 .editor-inline-input {
   font-size: 14px;
