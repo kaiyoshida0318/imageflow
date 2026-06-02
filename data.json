@@ -307,7 +307,11 @@
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/mpw24a7hi1gr25-mpwfw8b58f7bv2-material-1780392800253-1.png",
+            "images/mpw24a7hi1gr25-mpwfw8b58f7bv2-material-1780392803005-2.png",
+            "images/mpw24a7hi1gr25-mpwfw8b58f7bv2-material-1780392804711-3.png"
+          ],
           "files": [],
           "imagesFinal": [],
           "filesFinal": [],
