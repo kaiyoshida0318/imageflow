@@ -829,8 +829,31 @@ function renderSections(p) {
   });
   // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
   wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
-    inp.addEventListener("blur", () => commitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), inp.value));
+    inp.addEventListener("blur", () => {
+      // paste直後はblur保存をスキップ(改行込みの保存内容を1行値で上書きしないため)
+      if (inp.dataset.pasteSkipBlur === "1") {
+        inp.dataset.pasteSkipBlur = "";
+        return;
+      }
+      commitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), inp.value);
+    });
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
+    // 貼り付け(paste)時: 改行を含むテキストはinputに入れず直接データへ保存。
+    // ChatGPT等からコピペ時に改行が消えるのを防ぐ。
+    inp.addEventListener("paste", (e) => {
+      const cd = e.clipboardData || window.clipboardData;
+      if (!cd) return;
+      const pasted = cd.getData("text/plain");
+      if (pasted === undefined || pasted === null) return;
+      // 改行を含む場合だけ特別扱い(改行なしなら通常のpaste挙動でOK)
+      if (!/\r|\n/.test(pasted)) return;
+      e.preventDefault();
+      // inputには表示用に1行化(改行→空白)した先頭を入れ、データには改行込みで保存
+      const oneLine = pasted.replace(/\s*\r?\n\s*/g, " ").trim();
+      inp.value = oneLine;
+      inp.dataset.pasteSkipBlur = "1";  // 直後のblurで1行値に上書きされるのを防ぐ
+      pasteCommitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), pasted);
+    });
   });
   // 「編集」ボタンで大きい画面(全画面エディタ)を開く
   wrap.querySelectorAll(".sec-text-edit").forEach((btn) => {
@@ -1099,6 +1122,26 @@ async function commitSectionText(iid, pos, idx, value) {
   arr[idx] = newVal;
   try {
     await saveData(`Update text: ${p.name}`, mergeCurrentProduct(p));
+  } catch (err) {
+    alert("保存失敗: " + err.message);
+  }
+}
+
+// 貼り付け(paste)専用: 改行を含むrawTextをそのままデータに保存する。
+// 1行input欄に改行を貼っても消えないようにするための専用パス。
+async function pasteCommitSectionText(iid, pos, idx, rawText) {
+  if (manualSaving) return;
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  const arr = item ? item[textArrName(pos)] : null;
+  if (!item || !arr || arr[idx] === undefined) return;
+  // trimは前後だけ。内部の改行は保持。
+  const newVal = String(rawText).replace(/^\s+|\s+$/g, "");
+  if (arr[idx] === newVal) return;
+  arr[idx] = newVal;
+  try {
+    await saveData(`Paste text: ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
     alert("保存失敗: " + err.message);
   }
