@@ -1586,23 +1586,6 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-radius: 2px;
 }
 .editor-section-actions { display: flex; gap: 6px; }
-.sec-add-text, .sec-add-img {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border: 1px solid var(--accent-soft);
-  border-radius: 999px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  transition: all 0.15s;
-}
-.sec-add-text:hover, .sec-add-img:hover {
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
-}
-
 /* セクション内 画像 */
 .sec-images {
   display: flex;
