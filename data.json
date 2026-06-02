@@ -25,7 +25,16 @@
             "images/mpw24a7hi1gr25-mpw24bkl6g9oyq-material-1780370125865-7.webp",
             "images/mpw24a7hi1gr25-mpw24bkl6g9oyq-material-1780370127395-8.webp"
           ],
-          "files": [],
+          "files": [
+            {
+              "path": "files/mpw24a7hi1gr25-mpw24bkl6g9oyq-material-1780370134438-1-________________.txt",
+              "name": "ライバルレビューをコピペした内容.txt"
+            },
+            {
+              "path": "files/mpw24a7hi1gr25-mpw24bkl6g9oyq-material-1780370136449-2-________________2.txt",
+              "name": "ライバルレビューをコピペした内容2.txt"
+            }
+          ],
           "imagesFinal": [],
           "filesFinal": []
         }
