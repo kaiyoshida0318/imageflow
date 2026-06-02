@@ -675,14 +675,13 @@ function renderSections(p) {
         </div>
       </div>`;
     };
-    // テキストブロック(pos: top/bottom)。各ブロックに「+ テキスト」ボタンを置く
+    // テキストブロック(pos: top/bottom)。既存テキストのみ表示(追加ボタンなし)
     const textsBlockHtml = (pos) => {
       const arr = item[textArrName(pos)] || [];
       const items = arr.map((t, i) => textItemHtml(t, i, pos)).join("");
       return `
       <div class="sec-texts" data-pos="${pos}">
         ${items}
-        <button class="sec-add-text" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}">+ テキスト</button>
       </div>`;
     };
 
@@ -866,10 +865,6 @@ function renderSections(p) {
   // 「.txt」ボタンで文章をテキストファイルとしてダウンロード
   wrap.querySelectorAll(".sec-text-txt").forEach((btn) => {
     btn.addEventListener("click", () => downloadSectionText(btn));
-  });
-  // テキスト追加(上/下それぞれ)
-  wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
-    btn.addEventListener("click", () => addSectionText(btn.dataset.iid, btn.dataset.pos));
   });
   // 項目ごと削除
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
@@ -1094,21 +1089,6 @@ function sectionLabelOf(item) {
 }
 
 // テキスト追加(pos: top/bottom)
-async function addSectionText(iid, pos) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const arr = item[textArrName(pos)];
-  arr.push("");
-  renderSections(p);
-  // 追加した空の1行input欄にフォーカス(その場で打てる)
-  setTimeout(() => {
-    const inputs = document.querySelectorAll(`.sec-text-input[data-iid="${CSS.escape(iid)}"][data-pos="${pos}"]`);
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  }, 30);
-}
-
 // テキスト確定(blur時)※現在は全画面エディタ経由のため通常未使用
 async function commitSectionText(iid, pos, idx, value) {
   if (manualSaving) return;
