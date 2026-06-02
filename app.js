@@ -592,11 +592,13 @@ function openDetail(id) {
     if (p.image) {
       $("detail-img").style.display = "";
       $("detail-noimg").style.display = "none";
+      $("editor-img-remove").style.display = "";
       $("detail-img").src = "";
       loadImageInto($("detail-img"), p.image);
     } else {
       $("detail-img").style.display = "none";
       $("detail-noimg").style.display = "flex";
+      $("editor-img-remove").style.display = "none";
     }
 
     // 商品情報(インライン編集の初期値)
@@ -1505,9 +1507,35 @@ async function changeProductImage(file) {
     // 表示更新
     $("detail-img").style.display = "";
     $("detail-noimg").style.display = "none";
+    $("editor-img-remove").style.display = "";
     $("detail-img").src = "";
     loadImageInto($("detail-img"), p.image);
     setHeadStatus("✓ 画像を更新しました", "ok");
+    setTimeout(() => setHeadStatus(""), 1200);
+    render();
+  } catch (err) {
+    setHeadStatus("✗ " + err.message, "err");
+  }
+}
+
+// メイン画像を削除(右上の×ボタン)
+async function removeProductImage() {
+  const p = products.find((x) => x.id === currentDetailId);
+  if (!p || !p.image) return;
+  if (!confirm("メイン画像を削除しますか?")) return;
+  const oldPath = p.image;
+  try {
+    setHeadStatus("画像を削除中…");
+    try { await deleteFile(oldPath, null, `Delete main image: ${p.id}`); }
+    catch (e) { console.warn("画像削除失敗(続行):", e); }
+    blobCache.delete(oldPath);
+    p.image = "";
+    await saveData(`Remove main image: ${p.name}`, mergeCurrentProduct(p));
+    // 表示更新
+    $("detail-img").style.display = "none";
+    $("detail-noimg").style.display = "flex";
+    $("editor-img-remove").style.display = "none";
+    setHeadStatus("✓ 画像を削除しました", "ok");
     setTimeout(() => setHeadStatus(""), 1200);
     render();
   } catch (err) {
@@ -1800,6 +1828,7 @@ function bindEvents() {
     if (e.target.files[0]) changeProductImage(e.target.files[0]);
     e.target.value = "";
   });
+  $("editor-img-remove").addEventListener("click", removeProductImage);
 
   // ライトボックス: 背景クリックで閉じる(中の画像・ボタンクリックでは閉じない)
   $("lightbox").addEventListener("click", (e) => {
