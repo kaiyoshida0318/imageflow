@@ -1589,16 +1589,18 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-add-text, .sec-add-img {
   font-family: var(--mono);
   font-size: 11px;
-  padding: 5px 12px;
-  border: 1px solid var(--line);
+  font-weight: 600;
+  padding: 6px 14px;
+  border: 1px solid var(--accent-soft);
   border-radius: 999px;
-  color: var(--ink-soft);
-  background: var(--card);
+  color: var(--accent);
+  background: var(--accent-soft);
   transition: all 0.15s;
 }
 .sec-add-text:hover, .sec-add-img:hover {
   border-color: var(--accent);
-  color: var(--accent);
+  color: #fff;
+  background: var(--accent);
 }
 
 /* セクション内 画像 */
@@ -1675,7 +1677,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: var(--accent);
 }
 /* 「編集」ボタン(大きい画面を開く) */
-.sec-text-edit, .sec-text-copy {
+.sec-text-edit, .sec-text-copy, .sec-text-txt {
   flex-shrink: 0;
   font-family: var(--mono);
   font-size: 11px;
@@ -1687,13 +1689,13 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: all 0.15s;
   white-space: nowrap;
 }
-.sec-text-edit:hover, .sec-text-copy:hover {
+.sec-text-edit:hover, .sec-text-copy:hover, .sec-text-txt:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--bg-2);
 }
-/* コピー成功時の一瞬の表示 */
-.sec-text-copy.copied {
+/* コピー・txt成功時の一瞬の表示 */
+.sec-text-copy.copied, .sec-text-txt.copied {
   background: var(--ok);
   color: #fff;
   border-color: var(--ok);
@@ -2383,18 +2385,19 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-add-item-btn {
   width: 100%;
   padding: 14px;
-  border: 2px dashed var(--line);
+  border: 2px dashed var(--accent);
   border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--ink-soft);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 14px;
+  font-weight: 600;
   font-family: var(--sans);
   transition: all 0.15s;
 }
 .sec-add-item-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--bg-2);
+  border-style: solid;
+  color: #fff;
+  background: var(--accent);
 }
 .sec-add-item-menu {
   margin-top: 8px;
