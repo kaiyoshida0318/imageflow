@@ -637,6 +637,7 @@ function renderSections(p) {
         <div class="sec-text-btns">
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
+          <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章を.txtでダウンロード">.txt</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>`;
@@ -800,6 +801,10 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-text-copy").forEach((btn) => {
     btn.addEventListener("click", () => copySectionText(btn));
   });
+  // 「.txt」ボタンで文章をテキストファイルとしてダウンロード
+  wrap.querySelectorAll(".sec-text-txt").forEach((btn) => {
+    btn.addEventListener("click", () => downloadSectionText(btn));
+  });
   // テキスト追加(上/下それぞれ)
   wrap.querySelectorAll(".sec-add-text").forEach((btn) => {
     btn.addEventListener("click", () => addSectionText(btn.dataset.iid, btn.dataset.pos));
@@ -943,6 +948,61 @@ async function copySectionText(btn) {
   } catch (e) {
     alert("コピーに失敗しました: " + e.message);
   }
+}
+
+// 商品内のテキスト通し番号(1始まり): sectionItemsを順に、各itemのtextsTop→textsBottomの順に数える
+function textSerialNumber(p, iid, pos, idx) {
+  if (!p || !Array.isArray(p.sectionItems)) return 1;
+  let n = 0;
+  for (const it of p.sectionItems) {
+    // 上→下の順
+    for (const ps of ["top", "bottom"]) {
+      const arr = it[textArrName(ps)] || [];
+      for (let i = 0; i < arr.length; i++) {
+        n++;
+        if (it.iid === iid && ps === pos && i === idx) return n;
+      }
+    }
+  }
+  return n || 1;
+}
+
+// ファイル名に使えない文字を除去(Windows禁止文字 + 制御文字 + パス区切り)
+function safeFileName(name) {
+  return String(name || "untitled")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/[\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "untitled";
+}
+
+// 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。ファイル名は「商品名-通し番号.txt」
+function downloadSectionText(btn) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, btn.dataset.iid);
+  if (!item) return;
+  const pos = btn.dataset.pos;
+  const idx = parseInt(btn.dataset.idx);
+  const arr = item[textArrName(pos)];
+  const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
+  const serial = textSerialNumber(p, item.iid, pos, idx);
+  const filename = `${safeFileName(p.name)}-${serial}.txt`;
+  // BOM付きUTF-8でダウンロード(Windowsのメモ帳で文字化けを防ぐ)
+  const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // 押したフィードバック(一瞬「✓」)
+  const orig = btn.textContent;
+  btn.textContent = "✓";
+  btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
 }
 
 async function closeTextFullscreen() {
