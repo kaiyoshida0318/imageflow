@@ -2740,6 +2740,59 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 /* ========== ImageFlow v3.3: 素材除外ボタン ========== */
+/* v3.26.0: 3択ラジオ(素材を表示中/除外中/完成品を表示中) */
+.view-mode-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.view-mode-btn {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid var(--line) !important;
+  margin: 0;
+}
+.view-mode-btn:last-child { border-right: none !important; }
+.view-mode-btn.active {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
+.view-mode-btn.active:hover {
+  background: var(--ink) !important;
+}
+
+/* 完成品画像のチェックボックス(左下に表示) */
+.sec-img-check {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  z-index: 2;
+}
+.sec-img-check:hover { background: #fff; border-color: var(--accent); }
+.sec-img-check-input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: var(--ok);
+}
+/* チェック済みの完成品画像は緑枠で強調 */
+.sec-img-item.checked {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px var(--ok);
+}
 /* v3.20.0: 2段表示(上=状態 / 下=小さい切り替え案内)。素材・全体表示の両ボタン */
 #btn-exclude-material, #btn-wrap-toggle {
   display: inline-flex;
