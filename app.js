@@ -53,6 +53,9 @@ function ensureItemArrays(it) {
   delete it.texts;
   if (!Array.isArray(it.textsTop)) it.textsTop = [];
   if (!Array.isArray(it.textsBottom)) it.textsBottom = [];
+  // 完成品チェック状態(v3.26): imagesFinalに存在するpathだけ保持
+  if (!Array.isArray(it.imagesFinalChecked)) it.imagesFinalChecked = [];
+  it.imagesFinalChecked = it.imagesFinalChecked.filter((p) => it.imagesFinal.includes(p));
 }
 
 // pos("top"/"bottom") に応じたテキスト配列名
@@ -66,10 +69,16 @@ let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let currentDetailId = null;
 // v3.8.0: 表示は「画像一覧 + 縦長サムネ」固定。viewMode/galleryThumb は廃止。
-let galleryExcludeMaterial = (() => {
-  try { return localStorage.getItem("imageFlow.galleryExcludeMaterial") === "1"; }
-  catch { return false; }
-})();  // true: 素材を除外(メイン画像+完成品のみ)
+// 画像一覧の表示モード(3択): "show"=素材を表示 / "hide"=素材を除外 / "checked"=チェック済み完成品のみ
+let galleryViewMode = (() => {
+  try {
+    const v = localStorage.getItem("imageFlow.galleryViewMode");
+    if (v === "show" || v === "hide" || v === "checked") return v;
+    // 旧キーからの移行
+    const old = localStorage.getItem("imageFlow.galleryExcludeMaterial");
+    return old === "1" ? "hide" : "show";
+  } catch { return "show"; }
+})();
 
 // 画像一覧の行表示: false=1行(横スクロール) / true=複数行(折り返して全体表示)
 let galleryWrap = (() => {
@@ -368,15 +377,27 @@ async function verifyAuth(a) {
 
 // ---------- レンダリング(商品一覧) ----------
 // 商品の全画像パスを集める(商品画像 + 各項目の画像)
-function collectAllImages(p, excludeMaterial) {
+function collectAllImages(p, mode) {
+  // mode: "show" 素材も含めて全部 / "hide" 素材除外(メイン+完成品) / "checked" チェック済み完成品のみ
   const imgs = [];
-  if (p.image) imgs.push(p.image);
   if (Array.isArray(p.sectionItems)) {
     for (const item of p.sectionItems) {
-      if (!excludeMaterial && item.images) imgs.push(...item.images);
-      if (item.imagesFinal) imgs.push(...item.imagesFinal);
+      if (mode === "checked") {
+        // チェック済みの完成品画像だけ。item.imagesFinalChecked: 配列(=チェック済みパス)を想定
+        const checked = Array.isArray(item.imagesFinalChecked) ? item.imagesFinalChecked : [];
+        if (Array.isArray(item.imagesFinal)) {
+          for (const p2 of item.imagesFinal) {
+            if (checked.includes(p2)) imgs.push(p2);
+          }
+        }
+      } else {
+        if (mode !== "hide" && item.images) imgs.push(...item.images);
+        if (item.imagesFinal) imgs.push(...item.imagesFinal);
+      }
     }
   }
+  // メイン商品画像は show/hide のとき先頭に。checked は完成品のみなので含めない。
+  if (mode !== "checked" && p.image) imgs.unshift(p.image);
   return imgs;
 }
 
@@ -409,7 +430,7 @@ function renderGalleryPager(sortedProducts) {
   // 全商品の中で最大の画像枚数
   let maxImgs = 0;
   sortedProducts.forEach((p) => {
-    const n = collectAllImages(p, galleryExcludeMaterial).length;
+    const n = collectAllImages(p, galleryViewMode).length;
     if (n > maxImgs) maxImgs = n;
   });
   // 15枚以下ならページ送り不要(全部1ページに収まる)
@@ -453,7 +474,7 @@ function renderGalleryView() {
   const end = start + GALLERY_PAGE_SIZE;
 
   gallery.innerHTML = sorted.map((p) => {
-    const allImgs = collectAllImages(p, galleryExcludeMaterial);
+    const allImgs = collectAllImages(p, galleryViewMode);
     // 1行モード: 該当ページの15枚だけ。全体表示モード: 全部。
     const imgs = usePaging ? allImgs.slice(start, end) : allImgs;
     const thumbsHtml = imgs.length
@@ -506,23 +527,25 @@ function renderGalleryView() {
   });
 }
 
-// 素材除外ボタンの表示更新(画像一覧固定なので常に表示)
-function updateExcludeBtn() {
-  const eb = $("btn-exclude-material");
-  if (eb) {
-    eb.style.display = "";
-    // 上段=現在の状態、下段=小さい字で「→切り替え」案内
-    const state = galleryExcludeMaterial ? "素材を除外中" : "素材を表示中";
-    eb.innerHTML = `<span class="btn-2line-main">${state}</span><span class="btn-2line-sub">→切り替え</span>`;
-    eb.classList.toggle("active", galleryExcludeMaterial);
+// 表示モードボタン(3択ラジオ): 素材を表示中 / 素材を除外中 / 完成品を表示中
+function updateViewModeBtns() {
+  const map = { "show": "view-mode-show", "hide": "view-mode-hide", "checked": "view-mode-checked" };
+  const labels = { "show": "素材を表示中", "hide": "素材を除外中", "checked": "完成品を表示中" };
+  for (const mode of Object.keys(map)) {
+    const btn = $(map[mode]);
+    if (!btn) continue;
+    btn.innerHTML = `<span class="btn-2line-main">${labels[mode]}</span>`;
+    btn.classList.toggle("active", galleryViewMode === mode);
   }
 }
 
-// 素材除外の切り替え
-function toggleExcludeMaterial() {
-  galleryExcludeMaterial = !galleryExcludeMaterial;
-  try { localStorage.setItem("imageFlow.galleryExcludeMaterial", galleryExcludeMaterial ? "1" : "0"); } catch {}
-  updateExcludeBtn();
+// モード切替(必ずどれか1つが選ばれる)
+function setViewMode(mode) {
+  if (mode !== "show" && mode !== "hide" && mode !== "checked") return;
+  if (galleryViewMode === mode) return;
+  galleryViewMode = mode;
+  try { localStorage.setItem("imageFlow.galleryViewMode", mode); } catch {}
+  updateViewModeBtns();
   render();
 }
 
@@ -604,12 +627,20 @@ function renderSections(p) {
     const labelIsEmpty = (rawLabel === "");
 
     // 画像・ファイルのアイテムHTMLを生成(side: material / final)
-    const imgItemHtml = (path, i, side) => `
-      <div class="sec-img-item">
+    const imgItemHtml = (path, i, side) => {
+      // 完成品のみチェックボックスを表示(チェックすると「完成品を表示中」モードで表示対象)
+      const checked = side === "final" && Array.isArray(item.imagesFinalChecked) && item.imagesFinalChecked.includes(path);
+      const checkHtml = side === "final"
+        ? `<label class="sec-img-check" title="チェックすると「完成品を表示中」モードで表示されます"><input type="checkbox" class="sec-img-check-input" data-iid="${escapeHtml(item.iid)}" data-path="${escapeHtml(path)}" ${checked ? "checked" : ""} /></label>`
+        : "";
+      return `
+      <div class="sec-img-item${side === "final" && checked ? " checked" : ""}">
         <img data-load-path="${escapeHtml(path)}" alt="" />
+        ${checkHtml}
         <button class="sec-swap" data-iid="${escapeHtml(item.iid)}" data-kind="img" data-side="${side}" data-idx="${i}" title="反対側へ移動">⇔</button>
         <button class="sec-img-remove" data-iid="${escapeHtml(item.iid)}" data-side="${side}" data-idx="${i}" title="削除">×</button>
       </div>`;
+    };
     const fileItemHtml = (f, i, side) => `
       <div class="sec-file-item">
         <a class="sec-file-link" data-load-file="${escapeHtml(f.path)}" data-name="${escapeHtml(f.name)}" href="#" download="${escapeHtml(f.name)}">📄 <span>${escapeHtml(f.name)}</span></a>
@@ -631,13 +662,15 @@ function renderSections(p) {
     // 「編集」ボタンで全画面エディタ(大きい画面)を開ける。
     const textItemHtml = (t, i, pos) => {
       const val = (t !== undefined && t !== null) ? escapeHtml(String(t)) : "";
+      const txtLabel = pos === "bottom" ? "回答文.txt" : "入力文.txt";
+      const txtTitle = pos === "bottom" ? "この回答文を.txtでダウンロード" : "この入力文を.txtでダウンロード";
       return `
       <div class="sec-text-item">
         <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
-          <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章を.txtでダウンロード">.txt</button>
+          <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="${txtTitle}">${txtLabel}</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
       </div>`;
@@ -783,6 +816,12 @@ function renderSections(p) {
   // 画像/ファイルを反対側へ移動(⇔)
   wrap.querySelectorAll(".sec-swap").forEach((btn) => {
     btn.addEventListener("click", () => swapSide(btn.dataset.iid, btn.dataset.kind, btn.dataset.side, parseInt(btn.dataset.idx)));
+  });
+  // 完成品チェックボックス: チェック/外す → imagesFinalChecked に反映 + 保存
+  wrap.querySelectorAll(".sec-img-check-input").forEach((cb) => {
+    cb.addEventListener("change", () => toggleFinalChecked(cb.dataset.iid, cb.dataset.path, cb.checked));
+    // チェックボックスクリックがライトボックス起動に伝播しないように
+    cb.addEventListener("click", (e) => e.stopPropagation());
   });
   // テキスト削除
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
@@ -950,18 +989,17 @@ async function copySectionText(btn) {
   }
 }
 
-// 商品内のテキスト通し番号(1始まり): sectionItemsを順に、各itemのtextsTop→textsBottomの順に数える
+// 商品内のテキスト通し番号(1始まり)。pos別に独立カウント:
+//   pos="top"   → 全項目のtextsTopだけを順に1,2,3…
+//   pos="bottom"→ 全項目のtextsBottomだけを順に1,2,3…
 function textSerialNumber(p, iid, pos, idx) {
   if (!p || !Array.isArray(p.sectionItems)) return 1;
   let n = 0;
   for (const it of p.sectionItems) {
-    // 上→下の順
-    for (const ps of ["top", "bottom"]) {
-      const arr = it[textArrName(ps)] || [];
-      for (let i = 0; i < arr.length; i++) {
-        n++;
-        if (it.iid === iid && ps === pos && i === idx) return n;
-      }
+    const arr = it[textArrName(pos)] || [];
+    for (let i = 0; i < arr.length; i++) {
+      n++;
+      if (it.iid === iid && i === idx) return n;
     }
   }
   return n || 1;
@@ -976,7 +1014,8 @@ function safeFileName(name) {
     .trim() || "untitled";
 }
 
-// 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。ファイル名は「商品名-通し番号.txt」
+// 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。
+// ファイル名は「商品名-入力文/回答文-通し番号.txt」
 function downloadSectionText(btn) {
   const p = getCurrentProduct();
   if (!p) return;
@@ -987,7 +1026,8 @@ function downloadSectionText(btn) {
   const arr = item[textArrName(pos)];
   const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
   const serial = textSerialNumber(p, item.iid, pos, idx);
-  const filename = `${safeFileName(p.name)}-${serial}.txt`;
+  const label = pos === "bottom" ? "回答文" : "入力文";
+  const filename = `${safeFileName(p.name)}-${label}-${serial}.txt`;
   // BOM付きUTF-8でダウンロード(Windowsのメモ帳で文字化けを防ぐ)
   const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1243,6 +1283,31 @@ async function addTopAllPlaceholder(iid) {
     setTimeout(() => setHeadStatus(""), 1200);
   } catch (err) {
     setHeadStatus("✗ " + err.message, "err");
+  }
+}
+
+// 完成品画像のチェック切替: imagesFinalChecked 配列に path を入れる/外す → 保存
+async function toggleFinalChecked(iid, path, isChecked) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.imagesFinalChecked)) item.imagesFinalChecked = [];
+  const i = item.imagesFinalChecked.indexOf(path);
+  if (isChecked && i === -1) item.imagesFinalChecked.push(path);
+  if (!isChecked && i !== -1) item.imagesFinalChecked.splice(i, 1);
+  // 即DOMにも反映(完成品アイテムの枠強調)
+  const wrapEl = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
+  if (wrapEl) {
+    wrapEl.querySelectorAll(`.sec-img-check-input[data-path="${CSS.escape(path)}"]`).forEach((cb) => {
+      const item = cb.closest(".sec-img-item");
+      if (item) item.classList.toggle("checked", isChecked);
+    });
+  }
+  try {
+    await saveData(`Toggle final-checked: ${p.name}`, mergeCurrentProduct(p));
+  } catch (err) {
+    alert("保存失敗: " + err.message);
   }
 }
 
@@ -1695,7 +1760,9 @@ function bindEvents() {
   $("btn-close-nosave").addEventListener("click", closeWithoutSaving);
 
   // 素材除外の切り替え(画像一覧固定)
-  $("btn-exclude-material").addEventListener("click", toggleExcludeMaterial);
+  $("view-mode-show").addEventListener("click", () => setViewMode("show"));
+  $("view-mode-hide").addEventListener("click", () => setViewMode("hide"));
+  $("view-mode-checked").addEventListener("click", () => setViewMode("checked"));
   $("btn-wrap-toggle").addEventListener("click", toggleGalleryWrap);
 
   // 商品情報インライン編集(blurで保存)
@@ -1749,7 +1816,7 @@ async function init() {
   $("loading").style.display = "block";
   $("gallery").innerHTML = "";
   // 素材除外ボタンの文言・状態を初期化(画像一覧固定)
-  updateExcludeBtn();
+  updateViewModeBtns();
   updateWrapBtn();
   try {
     await loadData();
