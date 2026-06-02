@@ -398,6 +398,18 @@ function collectAllImages(p, mode) {
   }
   // メイン商品画像は show/hide のとき先頭に。checked は完成品のみなので含めない。
   if (mode !== "checked" && p.image) imgs.unshift(p.image);
+  // checkedモード: p.finalOrder で並び替え(独立した表示順を保持)
+  if (mode === "checked" && Array.isArray(p.finalOrder) && p.finalOrder.length) {
+    const set = new Set(imgs);
+    const ordered = [];
+    // finalOrderに載っていてimgsにもあるものを先に
+    for (const path of p.finalOrder) {
+      if (set.has(path)) { ordered.push(path); set.delete(path); }
+    }
+    // finalOrderに無いもの(新規にチェックされたもの等)は末尾に追加(デフォルト順)
+    for (const path of imgs) if (set.has(path)) ordered.push(path);
+    return ordered;
+  }
   return imgs;
 }
 
@@ -477,8 +489,18 @@ function renderGalleryView() {
     const allImgs = collectAllImages(p, galleryViewMode);
     // 1行モード: 該当ページの15枚だけ。全体表示モード: 全部。
     const imgs = usePaging ? allImgs.slice(start, end) : allImgs;
+    const isChecked = galleryViewMode === "checked";
     const thumbsHtml = imgs.length
-      ? imgs.map((path) => `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`).join("")
+      ? imgs.map((path, i) => {
+          const imgTag = `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`;
+          if (!isChecked) return imgTag;
+          // checkedモード: サムネ下に←→ボタンで左右並び替え
+          const arrows = `<div class="row-thumb-arrows">
+              <button class="row-thumb-arrow" data-pid="${escapeHtml(p.id)}" data-path="${escapeHtml(path)}" data-dir="left" title="左へ" ${i === 0 ? "disabled" : ""}>←</button>
+              <button class="row-thumb-arrow" data-pid="${escapeHtml(p.id)}" data-path="${escapeHtml(path)}" data-dir="right" title="右へ" ${i === imgs.length - 1 ? "disabled" : ""}>→</button>
+            </div>`;
+          return `<div class="row-thumb-wrap">${imgTag}${arrows}</div>`;
+        }).join("")
       : '<span class="row-noimg">画像なし</span>';
     return `
     <div class="gallery-row" data-id="${escapeHtml(p.id)}">
@@ -517,6 +539,13 @@ function renderGalleryView() {
     // 行の何もないところをクリックしても編集画面へ(画像・編集ボタンは個別処理が優先)
     row.style.cursor = "pointer";
     row.addEventListener("click", () => openDetail(row.dataset.id));
+    // checkedモードの ←→ ボタン: 左右並び替え。行クリックに伝播させない。
+    row.querySelectorAll(".row-thumb-arrow").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        moveFinalThumb(btn.dataset.pid, btn.dataset.path, btn.dataset.dir);
+      });
+    });
   });
   // 「編集」ボタンで編集ページへ
   gallery.querySelectorAll(".row-open-btn").forEach((btn) => {
@@ -1331,6 +1360,29 @@ async function toggleFinalChecked(iid, path, isChecked) {
   }
   try {
     await saveData(`Toggle final-checked: ${p.name}`, mergeCurrentProduct(p));
+  } catch (err) {
+    alert("保存失敗: " + err.message);
+  }
+}
+
+// 「完成品を表示中」モード専用の表示順を左右に動かす
+// dir: "left" | "right"。商品ごとに p.finalOrder 配列で順を保持。
+async function moveFinalThumb(productId, path, dir) {
+  const p = products.find((x) => x.id === productId);
+  if (!p) return;
+  // 現在の表示順を取得して、これを基準に並び替えする(未保存の新規分も自動で含まれる)
+  const currentOrder = collectAllImages(p, "checked");
+  const i = currentOrder.indexOf(path);
+  if (i === -1) return;
+  const j = dir === "left" ? i - 1 : i + 1;
+  if (j < 0 || j >= currentOrder.length) return;
+  // 入れ替え
+  [currentOrder[i], currentOrder[j]] = [currentOrder[j], currentOrder[i]];
+  p.finalOrder = currentOrder;
+  // 即座にトップ画面を更新(ボタンのdisabled状態も再計算される)
+  render();
+  try {
+    await saveData(`Reorder finals: ${p.name}`, mergeCurrentProduct(p));
   } catch (err) {
     alert("保存失敗: " + err.message);
   }
