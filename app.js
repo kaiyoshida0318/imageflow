@@ -599,7 +599,7 @@ function toggleGalleryWrap() {
 
 // ---------- 商品詳細 ----------
 function closeAllModals() {
-  ["add-modal", "detail-modal", "text-fullscreen"].forEach((id) => {
+  ["add-modal", "detail-modal", "text-fullscreen", "storage-modal"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
@@ -929,6 +929,108 @@ async function moveSectionItem(iid, delta) {
 
 // 空白の項目を1つ追加(雛形に依存しない)
 // key/label を持たせず、texts に空1つを入れてテキスト欄を最初から表示。
+// ---------- 容量確認モーダル ----------
+
+// バイト数を読みやすい単位に変換
+function formatBytes(bytes) {
+  if (bytes === 0 || !bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+  return val.toFixed(val < 10 && i > 0 ? 2 : val < 100 ? 1 : 0) + " " + units[i];
+}
+
+// images/ フォルダの全ファイルを再帰的に取得(GitHub Contents API)
+async function listAllFiles(dir) {
+  try {
+    const res = await ghFetch(`contents/${dir}`);
+    if (!res.ok) return [];
+    const items = await res.json();
+    const files = [];
+    for (const it of items) {
+      if (it.type === "file") {
+        files.push({ path: it.path, name: it.name, size: it.size });
+      } else if (it.type === "dir") {
+        const sub = await listAllFiles(it.path);
+        files.push(...sub);
+      }
+    }
+    return files;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function openStorageModal() {
+  $("storage-modal").style.display = "flex";
+  $("storage-loading").style.display = "block";
+  $("storage-content").style.display = "none";
+  $("storage-content").innerHTML = "";
+  try {
+    // リポジトリ全体のサイズ(KB単位で返ってくる)
+    const repoRes = await fetch(`https://api.github.com/repos/${auth.owner}/${auth.repo}`, {
+      headers: { "Authorization": `token ${auth.token}`, "Accept": "application/vnd.github+json" }
+    });
+    const repoInfo = await repoRes.json();
+    const repoSizeBytes = (repoInfo.size || 0) * 1024;
+
+    // images/ と files/ の中身を取得
+    const [imageFiles, otherFiles] = await Promise.all([
+      listAllFiles("images"),
+      listAllFiles("files")
+    ]);
+    const allFiles = imageFiles.concat(otherFiles);
+    const imageTotal = imageFiles.reduce((s, f) => s + (f.size || 0), 0);
+    const fileTotal = otherFiles.reduce((s, f) => s + (f.size || 0), 0);
+
+    // 大きい順 トップ10
+    const top10 = allFiles.slice().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 10);
+
+    // 推奨1GBへの割合
+    const SOFT_LIMIT = 1024 * 1024 * 1024; // 1GB
+    const HARD_WARN = 5 * 1024 * 1024 * 1024; // 5GB
+    const pct = Math.min(100, (repoSizeBytes / SOFT_LIMIT) * 100);
+    const warnLevel = repoSizeBytes >= HARD_WARN ? "danger" : repoSizeBytes >= SOFT_LIMIT ? "warn" : "ok";
+    const warnMsg = warnLevel === "danger" ? "⚠ 5GB超え。整理を強く推奨" :
+                    warnLevel === "warn" ? "推奨1GBを超えています(まだ問題なし、5GBまでは余裕あり)" :
+                    "余裕あり";
+
+    const topRows = top10.map((f, i) => `
+      <tr>
+        <td class="storage-rank">${i + 1}</td>
+        <td class="storage-name" title="${escapeHtml(f.path)}">${escapeHtml(f.name)}</td>
+        <td class="storage-size">${formatBytes(f.size)}</td>
+      </tr>`).join("");
+
+    $("storage-content").innerHTML = `
+      <div class="storage-section">
+        <div class="storage-label">リポジトリ全体</div>
+        <div class="storage-big">${formatBytes(repoSizeBytes)}</div>
+        <div class="storage-bar"><div class="storage-bar-fill ${warnLevel}" style="width:${pct.toFixed(1)}%"></div></div>
+        <div class="storage-note storage-note-${warnLevel}">${escapeHtml(warnMsg)}　/　推奨1GB・上限5GB</div>
+      </div>
+      <div class="storage-section">
+        <div class="storage-row"><span class="storage-label">画像 (images/)</span><span class="storage-value">${imageFiles.length}枚 / ${formatBytes(imageTotal)}</span></div>
+        <div class="storage-row"><span class="storage-label">添付ファイル (files/)</span><span class="storage-value">${otherFiles.length}件 / ${formatBytes(fileTotal)}</span></div>
+      </div>
+      ${top10.length ? `
+      <div class="storage-section">
+        <div class="storage-label">大きいファイル トップ${top10.length}</div>
+        <table class="storage-table"><tbody>${topRows}</tbody></table>
+      </div>` : ""}
+    `;
+    $("storage-loading").style.display = "none";
+    $("storage-content").style.display = "block";
+  } catch (err) {
+    $("storage-loading").textContent = "取得失敗: " + err.message;
+  }
+}
+
+function closeStorageModal() {
+  $("storage-modal").style.display = "none";
+}
+
 async function addBlankSectionItem() {
   const p = getCurrentProduct();
   if (!p) return;
@@ -1814,6 +1916,12 @@ function bindEvents() {
       clearAuth();
       location.reload();
     }
+  });
+
+  $("btn-storage").addEventListener("click", openStorageModal);
+  $("storage-close").addEventListener("click", closeStorageModal);
+  $("storage-modal").addEventListener("click", (e) => {
+    if (e.target === $("storage-modal")) closeStorageModal();
   });
 
   $("logo-link").addEventListener("click", () => {
