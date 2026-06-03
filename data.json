@@ -403,15 +403,18 @@
           "iid": "mpxg6xjxco7jtf",
           "key": "free-mpxg6xjxco7jtf",
           "textsTop": [
-            ""
+            "POINT01から05のポイントの色を全・位置をしっかり揃えて　それと右上の画像が同じようなのが続いている　右上に人を入れない構成で再度５つのPOINTを作って"
           ],
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-material-1780453753407-usefinal.svg"
+          ],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-06-02T03:07:26.997Z",
