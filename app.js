@@ -941,17 +941,17 @@ async function addBlankSectionItem() {
     textsBottom: [""],    // 画像の下のテキスト欄(空1個)
     images: [], files: [], imagesFinal: [], filesFinal: []
   });
-  try {
-    await saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p));
-    renderSections(p);
-    // 追加した項目の位置までスクロール(アップロード口は常時表示)
-    setTimeout(() => {
-      const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
-      if (section) section.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
-  } catch (err) {
-    alert("追加失敗: " + err.message);
-  }
+  // 高速化(v3.32): 画面更新は即時、保存は背景で実行(楽観的更新)。
+  // GitHub API応答を待たないので体感が一瞬。
+  renderSections(p);
+  // 追加した項目の位置までスクロール
+  setTimeout(() => {
+    const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
+    if (section) section.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 30);
+  // 保存はバックグラウンド(エラーは通知だけして画面は維持)
+  saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p))
+    .catch((err) => alert("追加の保存に失敗: " + err.message));
 }
 
 // 項目ごと削除(その商品からこのインスタンスを消す)
