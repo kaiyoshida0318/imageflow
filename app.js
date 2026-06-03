@@ -718,21 +718,15 @@ function renderSections(p) {
 
     return `
     <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
-      <div class="editor-section-head editor-section-head-notitle">
-        <div class="editor-section-actions">
-          <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
-          <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
-          <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
-        </div>
-      </div>
-      ${textsBlockHtml("top")}
-      <div class="sec-dual">
-        <div class="sec-side">
-          <div class="sec-side-label sec-side-label-row">
-            <span>素材</span>
-            <span class="sec-side-label-btns">
-              <button class="sec-use-topall" data-iid="${escapeHtml(item.iid)}" title="「all 上部の全情報を使用」のプレースホルダを素材に追加">上部の全情報を使用</button>
-              <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
+      <div class="editor-section-content">
+        ${textsBlockHtml("top")}
+        <div class="sec-dual">
+          <div class="sec-side">
+            <div class="sec-side-label sec-side-label-row">
+              <span>素材</span>
+              <span class="sec-side-label-btns">
+                <button class="sec-use-topall" data-iid="${escapeHtml(item.iid)}" title="「all 当画像以前の画像を使用」のプレースホルダを素材に追加">当画像以前の画像を使用</button>
+                <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
               <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
             </span>
           </div>
@@ -758,6 +752,12 @@ function renderSections(p) {
         </div>
       </div>
       ${textsBlockHtml("bottom")}
+      </div>
+      <div class="editor-section-side">
+        <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
+        <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
+        <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
+      </div>
     </div>`;
   }).join("");
 
@@ -807,7 +807,7 @@ function renderSections(p) {
   wrap.querySelectorAll(".sec-use-top").forEach((btn) => {
     btn.addEventListener("click", () => addTopPlaceholder(btn.dataset.iid));
   });
-  // 「上部の全情報を使用」プレースホルダを素材に追加
+  // 「当画像以前の画像を使用」プレースホルダを素材に追加
   wrap.querySelectorAll(".sec-use-topall").forEach((btn) => {
     btn.addEventListener("click", () => addTopAllPlaceholder(btn.dataset.iid));
   });
@@ -1306,14 +1306,14 @@ async function addTopPlaceholder(iid) {
   }
 }
 
-// 「all 上部の全情報を使用」プレースホルダ画像。完成品用と同じ配色で、矢印の代わりに緑の「all」。
+// 「all 当画像以前の画像を使用」プレースホルダ画像。完成品用と同じ配色で、矢印の代わりに緑の「all」。
 function topAllPlaceholderSvgBase64() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
   <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
   <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
     <text x="300" y="262" font-size="84" font-weight="800" fill="#2e9e5b">all</text>
-    <text x="300" y="345" font-size="42" font-weight="700">上部の</text>
-    <text x="300" y="407" font-size="42" font-weight="700">全情報を使用</text>
+    <text x="300" y="345" font-size="38" font-weight="700">当画像以前の</text>
+    <text x="300" y="407" font-size="38" font-weight="700">画像を使用</text>
   </g>
 </svg>`;
   return b64encode(svg);
