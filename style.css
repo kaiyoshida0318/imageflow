@@ -1569,8 +1569,52 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-section {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 14px 16px;
   background: var(--bg);
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.editor-section-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 右側ボタン列(× ↑ ↓ の縦並び) */
+.editor-section-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.editor-section-side .sec-remove-item,
+.editor-section-side .sec-move {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.editor-section-side .sec-remove-item:hover,
+.editor-section-side .sec-move:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.editor-section-side .sec-move:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 .editor-section-head {
   display: flex;
@@ -2596,7 +2640,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   grid-template-columns: 570px 570px;
   justify-content: start;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
 }
 .sec-side {
   border: 1px solid var(--line);
