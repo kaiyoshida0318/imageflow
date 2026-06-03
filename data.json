@@ -388,7 +388,9 @@
             "images/mpw24a7hi1gr25-mpxg5m7mf1iqpr-material-1780453694030-usetopall.svg"
           ],
           "files": [],
-          "imagesFinal": [],
+          "imagesFinal": [
+            "images/mpw24a7hi1gr25-mpxg5m7mf1iqpr-final-1780453711468-1.png"
+          ],
           "filesFinal": [],
           "imagesFinalChecked": []
         }
