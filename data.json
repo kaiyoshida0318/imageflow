@@ -412,7 +412,13 @@
             "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-material-1780453753407-usefinal.svg"
           ],
           "files": [],
-          "imagesFinal": [],
+          "imagesFinal": [
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-final-1780453767769-1.png",
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-final-1780453770398-2.png",
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-final-1780453772927-3.png",
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-final-1780453775700-4.png",
+            "images/mpw24a7hi1gr25-mpxg6xjxco7jtf-final-1780453778686-5.png"
+          ],
           "filesFinal": [],
           "imagesFinalChecked": []
         }
