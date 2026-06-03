@@ -1451,8 +1451,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .modal-inner.editor {
   max-width: 1560px;
   width: 98vw;
-  height: 88vh;          /* 高さを固定して内側でスクロール制御 */
-  max-height: 88vh;
+  height: 95vh;          /* 高さを固定して内側でスクロール制御。情報量を増やすため画面いっぱいに近い */
+  max-height: 95vh;
   padding: 0;            /* パディングは各エリアで個別に持たせる */
   display: flex;
   flex-direction: column;
@@ -1970,7 +1970,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px 24px;
+  padding: 10px 24px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   border-radius: 6px 6px 0 0;
