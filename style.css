@@ -2114,6 +2114,28 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .settings-item-danger:hover .settings-item-main { color: #c2185b; }
 
+/* v3.39.3: 接続リセットは目立たないフッター配置に */
+.settings-footer {
+  padding: 8px 24px 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.settings-danger-link {
+  font-size: 11px;
+  color: var(--ink-mute);
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.settings-danger-link:hover {
+  color: #c2185b;
+  text-decoration-color: #c2185b;
+}
+
 /* タグ編集モーダル */
 .tag-settings-inner {
   max-width: 1100px;
@@ -2151,8 +2173,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
 }
-.tag-group-name-input {
+.tag-group-head .tag-group-name-input {
   flex: 1;
+  width: auto;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
   padding: 6px 10px;
@@ -2162,8 +2186,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink);
   font-family: var(--sans);
 }
-.tag-group-name-input:hover { background: var(--bg-2); }
-.tag-group-name-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.tag-group-head .tag-group-name-input:hover { background: var(--bg-2); }
+.tag-group-head .tag-group-name-input:focus { background: #fff; border-color: var(--accent); outline: none; }
 .tag-group-head-actions {
   display: flex;
   gap: 4px;
@@ -2202,7 +2226,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-radius: 6px;
 }
 .tag-row:hover { background: var(--bg-2); }
-.tag-name-input {
+.tag-row .tag-name-input {
   width: 110px;
   font-size: 12px;
   font-weight: 500;
@@ -2214,7 +2238,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-family: var(--sans);
   flex-shrink: 0;
 }
-.tag-name-input:focus { border-color: var(--accent); outline: none; }
+.tag-row .tag-name-input:focus { border-color: var(--accent); outline: none; }
 
 /* 色選択(クリックで開閉のドロップダウン式) */
 .tag-color-picker {
