@@ -2071,7 +2071,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-left-actions { margin-top: 14px; }
 .editor-left-actions .btn-danger { padding: 7px 14px; font-size: 12px; }
 
-/* v3.36.0: タグ選択UI(編集ページ左カラム) */
+/* v3.36.0→v3.37.0: タグ選択UI(編集ページ左カラム) + 5色のカラフル配色 */
 .editor-tags {
   margin-top: 16px;
   padding-top: 14px;
@@ -2101,31 +2101,61 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-tag-btn {
   font-family: var(--sans);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   padding: 4px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid;
   border-radius: 999px;
-  color: var(--ink-soft);
-  background: var(--card);
   transition: all 0.15s;
   cursor: pointer;
 }
-.editor-tag-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.editor-tag-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
 
-/* トップ画面のタグラベル(商品名と編集の間) */
+/* 5色のカラフル配色: 通常時は薄い背景+濃い文字、アクティブ時は濃い背景+白文字 */
+/* 新商品: ピンク */
+.editor-tag-btn[data-tag="新商品"] {
+  background: #fde2eb; color: #c2185b; border-color: #f8bbd0;
+}
+.editor-tag-btn[data-tag="新商品"]:hover { background: #f8bbd0; }
+.editor-tag-btn[data-tag="新商品"].active { background: #c2185b; color: #fff; border-color: #c2185b; }
+
+/* リニューアル: 紫 */
+.editor-tag-btn[data-tag="リニューアル"] {
+  background: #ede1f5; color: #6a1b9a; border-color: #d1c4e9;
+}
+.editor-tag-btn[data-tag="リニューアル"]:hover { background: #d1c4e9; }
+.editor-tag-btn[data-tag="リニューアル"].active { background: #6a1b9a; color: #fff; border-color: #6a1b9a; }
+
+/* 元のLP: 青 */
+.editor-tag-btn[data-tag="元のLP"] {
+  background: #dde9f7; color: #1565c0; border-color: #bbdefb;
+}
+.editor-tag-btn[data-tag="元のLP"]:hover { background: #bbdefb; }
+.editor-tag-btn[data-tag="元のLP"].active { background: #1565c0; color: #fff; border-color: #1565c0; }
+
+/* レビュー: 緑 */
+.editor-tag-btn[data-tag="レビュー"] {
+  background: #dcefdf; color: #2e7d32; border-color: #c8e6c9;
+}
+.editor-tag-btn[data-tag="レビュー"]:hover { background: #c8e6c9; }
+.editor-tag-btn[data-tag="レビュー"].active { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+
+/* ライバル画像: 黄/橙 */
+.editor-tag-btn[data-tag="ライバル画像"] {
+  background: #fff1cc; color: #b27300; border-color: #ffe0a0;
+}
+.editor-tag-btn[data-tag="ライバル画像"]:hover { background: #ffe0a0; }
+.editor-tag-btn[data-tag="ライバル画像"].active { background: #c98600; color: #fff; border-color: #c98600; }
+
+/* トップ画面のタグラベル: グループ別に行分け */
 .row-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+.row-tag-group {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin: 6px 0 0;
 }
 .row-tag {
   display: inline-block;
@@ -2133,10 +2163,14 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
   white-space: nowrap;
 }
+/* トップ画面のラベル色(編集ボタンと同じ5色) */
+.row-tag[data-tag="新商品"]      { background: #c2185b; color: #fff; }
+.row-tag[data-tag="リニューアル"] { background: #6a1b9a; color: #fff; }
+.row-tag[data-tag="元のLP"]      { background: #1565c0; color: #fff; }
+.row-tag[data-tag="レビュー"]    { background: #2e7d32; color: #fff; }
+.row-tag[data-tag="ライバル画像"] { background: #c98600; color: #fff; }
 
 /* ========== ImageFlow v1.9: 全画面テキストエディタ ========== */
 .text-fullscreen {
