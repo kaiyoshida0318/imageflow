@@ -503,8 +503,17 @@ function renderGalleryView() {
         }).join("")
       : '<span class="row-noimg">画像なし</span>';
     const tags = Array.isArray(p.tags) ? p.tags : [];
-    const tagsHtml = tags.length
-      ? `<div class="row-tags">${tags.map((t) => `<span class="row-tag">${escapeHtml(t)}</span>`).join("")}</div>`
+    // グループ別に振り分け(順序固定): 商品内容 → 元データ
+    const GROUP_CONTENT = ["新商品", "リニューアル"];
+    const GROUP_SOURCE = ["元のLP", "レビュー", "ライバル画像"];
+    const contentTags = GROUP_CONTENT.filter((t) => tags.includes(t));
+    const sourceTags = GROUP_SOURCE.filter((t) => tags.includes(t));
+    const tagPill = (t) => `<span class="row-tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
+    const tagsHtml = (contentTags.length || sourceTags.length)
+      ? `<div class="row-tags">
+          ${contentTags.length ? `<div class="row-tag-group">${contentTags.map(tagPill).join("")}</div>` : ""}
+          ${sourceTags.length ? `<div class="row-tag-group">${sourceTags.map(tagPill).join("")}</div>` : ""}
+        </div>`
       : "";
     return `
     <div class="gallery-row" data-id="${escapeHtml(p.id)}">
