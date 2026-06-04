@@ -2203,7 +2203,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .tag-row:hover { background: var(--bg-2); }
 .tag-name-input {
-  width: 140px;
+  width: 110px;
   font-size: 12px;
   font-weight: 500;
   padding: 5px 9px;
@@ -2215,15 +2215,50 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-shrink: 0;
 }
 .tag-name-input:focus { border-color: var(--accent); outline: none; }
-.tag-color-palette {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+
+/* 色選択(クリックで開閉のドロップダウン式) */
+.tag-color-picker {
+  position: relative;
   flex: 1;
+  display: flex;
+  align-items: center;
 }
+.tag-color-current {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.tag-color-current:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.tag-color-picker.open .tag-color-current {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.tag-color-dropdown {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  display: none;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  z-index: 100;
+  width: 188px;
+}
+.tag-color-picker.open .tag-color-dropdown { display: flex; }
 .tag-color-swatch {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
   padding: 0;
@@ -2233,7 +2268,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .tag-color-swatch:hover { transform: scale(1.15); }
 .tag-color-swatch.selected {
   border-color: var(--ink);
-  box-shadow: 0 0 0 2px var(--card);
+  box-shadow: 0 0 0 1px var(--card);
 }
 .tag-row-remove {
   width: 26px;
