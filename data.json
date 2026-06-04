@@ -18,10 +18,14 @@
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
-      "createdAt": "2026-06-04T01:12:24.666Z"
+      "createdAt": "2026-06-04T01:12:24.666Z",
+      "tags": [
+        "新商品"
+      ]
     },
     {
       "id": "mpw24a7hi1gr25",
