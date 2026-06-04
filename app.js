@@ -502,11 +502,16 @@ function renderGalleryView() {
           return `<div class="row-thumb-wrap">${imgTag}${arrows}</div>`;
         }).join("")
       : '<span class="row-noimg">画像なし</span>';
+    const tags = Array.isArray(p.tags) ? p.tags : [];
+    const tagsHtml = tags.length
+      ? `<div class="row-tags">${tags.map((t) => `<span class="row-tag">${escapeHtml(t)}</span>`).join("")}</div>`
+      : "";
     return `
     <div class="gallery-row" data-id="${escapeHtml(p.id)}">
       <div class="row-info">
         <div class="row-start-date">${escapeHtml(p.startDate || "—")}</div>
         <div class="row-name">${escapeHtml(p.name || "無題")}</div>
+        ${tagsHtml}
         <button class="row-open-btn" data-id="${escapeHtml(p.id)}">編集 ›</button>
       </div>
       <div class="row-thumbs">${thumbsHtml}</div>
@@ -633,6 +638,8 @@ function openDetail(id) {
     // 商品情報(インライン編集の初期値)
     $("edit-start-date").value = p.startDate || "";
     $("edit-product-name").value = p.name || "";
+    // タグの選択状態を反映
+    updateTagButtons(p);
     const hs = $("editor-head-status");
     if (hs) { hs.textContent = ""; hs.className = "save-status"; }
 
@@ -1639,6 +1646,30 @@ async function commitProductField(field, value) {
   }
 }
 
+// タグボタンの選択状態を商品データから反映
+function updateTagButtons(p) {
+  const tags = Array.isArray(p.tags) ? p.tags : [];
+  document.querySelectorAll(".editor-tag-btn").forEach((btn) => {
+    btn.classList.toggle("active", tags.includes(btn.dataset.tag));
+  });
+}
+
+// タグの選択を切り替え(複数選択可)
+async function toggleProductTag(tag) {
+  const p = products.find((x) => x.id === currentDetailId);
+  if (!p) return;
+  if (!Array.isArray(p.tags)) p.tags = [];
+  const i = p.tags.indexOf(tag);
+  if (i === -1) p.tags.push(tag);
+  else p.tags.splice(i, 1);
+  // 即UI反映
+  updateTagButtons(p);
+  // 保存はバックグラウンド(楽観的更新)
+  saveData(`Update tags: ${p.name}`, mergeCurrentProduct(p))
+    .then(() => render())
+    .catch((err) => alert("タグ保存失敗: " + err.message));
+}
+
 // 商品画像の差し替え
 async function changeProductImage(file) {
   const p = products.find((x) => x.id === currentDetailId);
@@ -1981,6 +2012,11 @@ function bindEvents() {
   $("edit-start-date").addEventListener("blur", (e) => commitProductField("startDate", e.target.value));
   $("edit-product-name").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   $("edit-start-date").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+
+  // タグボタン(複数選択可)
+  document.querySelectorAll(".editor-tag-btn").forEach((btn) => {
+    btn.addEventListener("click", () => toggleProductTag(btn.dataset.tag));
+  });
 
   // 商品画像の差し替え
   $("editor-img-change").addEventListener("click", () => $("editor-img-input").click());
