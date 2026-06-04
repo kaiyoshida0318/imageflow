@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.35.2" />
+<link rel="stylesheet" href="style.css?v=3.36.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.35.2</span>
+    <span class="version-badge">v3.36.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -110,7 +110,7 @@
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
   <div class="modal-inner editor">
-    <!-- v3.35.2: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
+    <!-- v3.36.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
     <div id="editor-action-bar" class="editor-action-bar">
       <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
       <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
@@ -132,6 +132,26 @@
         <input id="edit-start-date" type="text" class="editor-inline-input" placeholder="例: 26-0522" />
         <label class="field-label">商品名</label>
         <input id="edit-product-name" type="text" class="editor-inline-input editor-name-input" placeholder="商品名" />
+
+        <!-- タグ選択(自由に複数選択) -->
+        <div class="editor-tags">
+          <div class="editor-tag-group">
+            <div class="editor-tag-label">商品内容</div>
+            <div class="editor-tag-btns">
+              <button type="button" class="editor-tag-btn" data-tag="新商品">新商品</button>
+              <button type="button" class="editor-tag-btn" data-tag="リニューアル">リニューアル</button>
+            </div>
+          </div>
+          <div class="editor-tag-group">
+            <div class="editor-tag-label">元データ</div>
+            <div class="editor-tag-btns">
+              <button type="button" class="editor-tag-btn" data-tag="元のLP">元のLP</button>
+              <button type="button" class="editor-tag-btn" data-tag="レビュー">レビュー</button>
+              <button type="button" class="editor-tag-btn" data-tag="ライバル画像">ライバル画像</button>
+            </div>
+          </div>
+        </div>
+
         <div class="editor-left-actions">
           <button id="btn-delete" class="btn-danger">商品を削除</button>
         </div>
@@ -194,6 +214,6 @@
 </div>
 
 
-<script src="app.js?v=3.35.2"></script>
+<script src="app.js?v=3.36.0"></script>
 </body>
 </html>
