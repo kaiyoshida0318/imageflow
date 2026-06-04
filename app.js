@@ -67,7 +67,28 @@ let auth = null;
 let dataSha = null;
 let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
+let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
 let currentDetailId = null;
+
+// タグ定義のデフォルト(初回起動時 or tagGroupsが空のとき使われる)
+const DEFAULT_TAG_GROUPS = [
+  { id: "content", name: "商品内容", tags: [
+    { name: "新商品", color: "#c2185b" },
+    { name: "リニューアル", color: "#6a1b9a" }
+  ]},
+  { id: "source", name: "元データ", tags: [
+    { name: "元のLP", color: "#1565c0" },
+    { name: "レビュー", color: "#2e7d32" },
+    { name: "ライバル画像", color: "#c98600" }
+  ]}
+];
+
+// カラーピッカー用のプリセット16色
+const TAG_COLOR_PALETTE = [
+  "#c2185b", "#d81b60", "#e64a19", "#c98600", "#8d6e63",
+  "#2e7d32", "#388e3c", "#00897b", "#0288d1", "#1565c0",
+  "#5e35b1", "#6a1b9a", "#7b1fa2", "#455a64", "#37474f", "#546e7a"
+];
 // v3.8.0: 表示は「画像一覧 + 縦長サムネ」固定。viewMode/galleryThumb は廃止。
 // 画像一覧の表示モード(3択): "show"=素材を表示 / "hide"=素材を除外 / "checked"=チェック済み完成品のみ
 let galleryViewMode = (() => {
@@ -139,6 +160,7 @@ async function loadData() {
   if (res.status === 404) {
     products = [];
     dataSha = null;
+    if (tagGroups.length === 0) tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     return;
   }
   const data = await res.json();
@@ -147,9 +169,14 @@ async function loadData() {
     const json = JSON.parse(b64decode(data.content.replace(/\n/g, "")));
     products = Array.isArray(json.products) ? json.products : [];
     sectionDefs = Array.isArray(json.sectionDefs) ? json.sectionDefs : [];
+    tagGroups = Array.isArray(json.tagGroups) ? json.tagGroups : [];
     // 項目定義が無ければデフォルトで初期化
     if (sectionDefs.length === 0) {
       sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
+    }
+    // タグ定義が無ければデフォルトで初期化(深いコピーで参照を切る)
+    if (tagGroups.length === 0) {
+      tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     }
     // 旧形式(商品ごとのsections配列)から新形式(sectionData)へ移行
     migrateProducts();
@@ -157,6 +184,7 @@ async function loadData() {
     console.error("data.json 解析失敗", e);
     products = [];
     sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
+    tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
   }
 }
 
@@ -231,7 +259,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const body = {
       message: commitMessage,
-      content: b64encode(JSON.stringify({ products, sectionDefs }, null, 2)),
+      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups }, null, 2)),
       branch: auth.branch
     };
     if (dataSha) body.sha = dataSha;
@@ -503,17 +531,26 @@ function renderGalleryView() {
         }).join("")
       : '<span class="row-noimg">画像なし</span>';
     const tags = Array.isArray(p.tags) ? p.tags : [];
-    // グループ別に振り分け(順序固定): 商品内容 → 元データ
-    const GROUP_CONTENT = ["新商品", "リニューアル"];
-    const GROUP_SOURCE = ["元のLP", "レビュー", "ライバル画像"];
-    const contentTags = GROUP_CONTENT.filter((t) => tags.includes(t));
-    const sourceTags = GROUP_SOURCE.filter((t) => tags.includes(t));
-    const tagPill = (t) => `<span class="row-tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
-    const tagsHtml = (contentTags.length || sourceTags.length)
-      ? `<div class="row-tags">
-          ${contentTags.length ? `<div class="row-tag-group">${contentTags.map(tagPill).join("")}</div>` : ""}
-          ${sourceTags.length ? `<div class="row-tag-group">${sourceTags.map(tagPill).join("")}</div>` : ""}
-        </div>`
+    // tagGroups からタグの定義を引いて、グループ別に振り分け
+    const findTag = (name) => {
+      for (const g of (tagGroups || [])) {
+        for (const t of (g.tags || [])) {
+          if (t.name === name) return { ...t, groupId: g.id };
+        }
+      }
+      return null;
+    };
+    // グループ別のタグを順序付きで取り出す(タグ定義の順序を維持)
+    const byGroup = new Map();
+    for (const g of (tagGroups || [])) {
+      const ts = (g.tags || []).filter((t) => tags.includes(t.name));
+      if (ts.length) byGroup.set(g.id, ts);
+    }
+    const tagPill = (t) => `<span class="row-tag" data-tag="${escapeHtml(t.name)}" style="background:${escapeHtml(t.color || "#888")};color:#fff;">${escapeHtml(t.name)}</span>`;
+    const tagsHtml = byGroup.size
+      ? `<div class="row-tags">${Array.from(byGroup.values()).map((arr) =>
+          `<div class="row-tag-group">${arr.map(tagPill).join("")}</div>`
+        ).join("")}</div>`
       : "";
     return `
     <div class="gallery-row" data-id="${escapeHtml(p.id)}">
@@ -613,7 +650,7 @@ function toggleGalleryWrap() {
 
 // ---------- 商品詳細 ----------
 function closeAllModals() {
-  ["add-modal", "detail-modal", "text-fullscreen", "storage-modal"].forEach((id) => {
+  ["add-modal", "detail-modal", "text-fullscreen", "storage-modal", "settings-modal", "tag-settings-modal"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
@@ -1045,6 +1082,172 @@ async function openStorageModal() {
 
 function closeStorageModal() {
   $("storage-modal").style.display = "none";
+}
+
+// ---------- タグ設定モーダル ----------
+
+function openTagSettings() {
+  $("tag-settings-modal").style.display = "flex";
+  renderTagSettings();
+}
+
+// タグ設定の中身を描画
+function renderTagSettings() {
+  const wrap = $("tag-settings-body");
+  if (!wrap) return;
+  const groupsHtml = (tagGroups || []).map((g, gi) => {
+    const tagsHtml = (g.tags || []).map((t, ti) => {
+      const paletteHtml = TAG_COLOR_PALETTE.map((c) => {
+        const sel = (c.toLowerCase() === (t.color || "").toLowerCase()) ? " selected" : "";
+        return `<button type="button" class="tag-color-swatch${sel}" data-gi="${gi}" data-ti="${ti}" data-color="${c}" style="background:${c}" title="${c}"></button>`;
+      }).join("");
+      return `
+        <div class="tag-row">
+          <input type="text" class="tag-name-input" data-gi="${gi}" data-ti="${ti}" value="${escapeHtml(t.name)}" placeholder="タグ名" />
+          <div class="tag-color-palette">${paletteHtml}</div>
+          <button type="button" class="tag-row-remove" data-gi="${gi}" data-ti="${ti}" title="このタグを削除">×</button>
+        </div>`;
+    }).join("");
+    return `
+      <div class="tag-group-card" data-gi="${gi}">
+        <div class="tag-group-head">
+          <input type="text" class="tag-group-name-input" data-gi="${gi}" value="${escapeHtml(g.name)}" placeholder="グループ名" />
+          <div class="tag-group-head-actions">
+            <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="up" title="上へ" ${gi === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="down" title="下へ" ${gi === tagGroups.length - 1 ? "disabled" : ""}>↓</button>
+            <button type="button" class="tag-group-remove" data-gi="${gi}" title="このグループを削除">グループ削除</button>
+          </div>
+        </div>
+        <div class="tag-rows">${tagsHtml}</div>
+        <button type="button" class="tag-add-row" data-gi="${gi}">＋ タグを追加</button>
+      </div>`;
+  }).join("");
+  wrap.innerHTML = groupsHtml || '<div class="state-msg" style="padding:24px">グループがありません。下の「グループを追加」で作ってください。</div>';
+  bindTagSettingsEvents();
+}
+
+function bindTagSettingsEvents() {
+  const wrap = $("tag-settings-body");
+  if (!wrap) return;
+  // タグ名の編集(blur保存)
+  wrap.querySelectorAll(".tag-name-input").forEach((inp) => {
+    inp.addEventListener("blur", () => {
+      const gi = parseInt(inp.dataset.gi), ti = parseInt(inp.dataset.ti);
+      const newName = inp.value.trim();
+      if (!newName) { inp.value = tagGroups[gi].tags[ti].name; return; }
+      const oldName = tagGroups[gi].tags[ti].name;
+      if (oldName === newName) return;
+      // 名前が変わったら、既存の商品のtags配列も置換
+      tagGroups[gi].tags[ti].name = newName;
+      products.forEach((p) => {
+        if (Array.isArray(p.tags)) {
+          const i = p.tags.indexOf(oldName);
+          if (i !== -1) p.tags[i] = newName;
+        }
+      });
+      saveTagSettings();
+    });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  });
+  // グループ名の編集
+  wrap.querySelectorAll(".tag-group-name-input").forEach((inp) => {
+    inp.addEventListener("blur", () => {
+      const gi = parseInt(inp.dataset.gi);
+      const newName = inp.value.trim();
+      if (!newName) { inp.value = tagGroups[gi].name; return; }
+      if (tagGroups[gi].name === newName) return;
+      tagGroups[gi].name = newName;
+      saveTagSettings();
+    });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  });
+  // 色の選択
+  wrap.querySelectorAll(".tag-color-swatch").forEach((sw) => {
+    sw.addEventListener("click", () => {
+      const gi = parseInt(sw.dataset.gi), ti = parseInt(sw.dataset.ti);
+      tagGroups[gi].tags[ti].color = sw.dataset.color;
+      saveTagSettings();
+    });
+  });
+  // タグの削除
+  wrap.querySelectorAll(".tag-row-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gi = parseInt(btn.dataset.gi), ti = parseInt(btn.dataset.ti);
+      const tagName = tagGroups[gi].tags[ti].name;
+      if (!confirm(`タグ「${tagName}」を削除しますか? (このタグが付いた商品からも自動で外れます)`)) return;
+      tagGroups[gi].tags.splice(ti, 1);
+      // 既存商品の tags からも削除
+      products.forEach((p) => {
+        if (Array.isArray(p.tags)) {
+          const i = p.tags.indexOf(tagName);
+          if (i !== -1) p.tags.splice(i, 1);
+        }
+      });
+      saveTagSettings();
+    });
+  });
+  // タグの追加
+  wrap.querySelectorAll(".tag-add-row").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gi = parseInt(btn.dataset.gi);
+      const usedColors = tagGroups[gi].tags.map((t) => t.color);
+      const newColor = TAG_COLOR_PALETTE.find((c) => !usedColors.includes(c)) || TAG_COLOR_PALETTE[0];
+      tagGroups[gi].tags.push({ name: "新しいタグ", color: newColor });
+      saveTagSettings();
+    });
+  });
+  // グループの並び替え
+  wrap.querySelectorAll(".tag-group-move").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gi = parseInt(btn.dataset.gi);
+      const dir = btn.dataset.dir;
+      const newIdx = dir === "up" ? gi - 1 : gi + 1;
+      if (newIdx < 0 || newIdx >= tagGroups.length) return;
+      [tagGroups[gi], tagGroups[newIdx]] = [tagGroups[newIdx], tagGroups[gi]];
+      saveTagSettings();
+    });
+  });
+  // グループ削除
+  wrap.querySelectorAll(".tag-group-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gi = parseInt(btn.dataset.gi);
+      const g = tagGroups[gi];
+      const tagNames = g.tags.map((t) => t.name);
+      if (!confirm(`グループ「${g.name}」を削除しますか? (このグループのタグが付いた商品からも自動で外れます)`)) return;
+      tagGroups.splice(gi, 1);
+      // 既存商品から該当タグを全部外す
+      products.forEach((p) => {
+        if (Array.isArray(p.tags)) p.tags = p.tags.filter((t) => !tagNames.includes(t));
+      });
+      saveTagSettings();
+    });
+  });
+}
+
+// 新グループ追加
+function addTagGroup() {
+  tagGroups.push({
+    id: "g_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+    name: "新しいグループ",
+    tags: []
+  });
+  saveTagSettings();
+}
+
+// 設定の保存(楽観的更新): UI即更新 → 裏で保存 → 失敗時のみ通知
+function saveTagSettings() {
+  renderTagSettings();         // タグ設定モーダルを再描画
+  render();                    // トップ画面のタグラベルも反映
+  // 編集ページが開いてたらそこも更新
+  if (currentDetailId) {
+    const p = products.find((x) => x.id === currentDetailId);
+    if (p) updateTagButtons(p);
+  }
+  // mergeFn: 再ロード時にローカルのproducts状態(タグ名変更等を反映済み)を維持する
+  // tagGroupsはグローバル変数なので _saveDataImpl が自動でJSONに含める
+  const localProducts = products.slice();
+  saveData("Update tag settings", () => localProducts)
+    .catch((err) => alert("タグ設定の保存に失敗: " + err.message));
 }
 
 async function addBlankSectionItem() {
@@ -1655,12 +1858,43 @@ async function commitProductField(field, value) {
   }
 }
 
-// タグボタンの選択状態を商品データから反映
+// タグ選択UIを動的生成し、商品データから選択状態を反映
 function updateTagButtons(p) {
+  const wrap = $("editor-tags");
+  if (!wrap) return;
   const tags = Array.isArray(p.tags) ? p.tags : [];
-  document.querySelectorAll(".editor-tag-btn").forEach((btn) => {
-    btn.classList.toggle("active", tags.includes(btn.dataset.tag));
+  const groupsHtml = (tagGroups || []).map((g) => {
+    if (!g || !Array.isArray(g.tags) || g.tags.length === 0) return "";
+    const btns = g.tags.map((t) => {
+      const isActive = tags.includes(t.name);
+      const bg = t.color || "#888";
+      const style = isActive
+        ? `background:${bg};color:#fff;border-color:${bg};`
+        : `background:${hexToLight(bg)};color:${bg};border-color:${hexToLight(bg)};`;
+      return `<button type="button" class="editor-tag-btn${isActive ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
+    }).join("");
+    return `<div class="editor-tag-group">
+        <div class="editor-tag-label">${escapeHtml(g.name)}</div>
+        <div class="editor-tag-btns">${btns}</div>
+      </div>`;
+  }).join("");
+  wrap.innerHTML = groupsHtml;
+  // ボタンのイベントbind(動的生成なので毎回必要)
+  wrap.querySelectorAll(".editor-tag-btn").forEach((btn) => {
+    btn.addEventListener("click", () => toggleProductTag(btn.dataset.tag));
   });
+}
+
+// 色を薄くする(背景用): #RRGGBB を「白に混ぜた淡い色」に
+function hexToLight(hex) {
+  const h = (hex || "").replace("#", "");
+  if (h.length !== 6) return "#f0f0f0";
+  const r = parseInt(h.substr(0, 2), 16);
+  const g = parseInt(h.substr(2, 2), 16);
+  const b = parseInt(h.substr(4, 2), 16);
+  // 白に約75%混ぜる
+  const mix = (c) => Math.round(c + (255 - c) * 0.78);
+  return `#${[mix(r), mix(g), mix(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
 // タグの選択を切り替え(複数選択可)
@@ -1952,11 +2186,27 @@ function bindEvents() {
   });
 
   $("btn-settings").addEventListener("click", () => {
+    $("settings-modal").style.display = "flex";
+  });
+  $("settings-close").addEventListener("click", () => { $("settings-modal").style.display = "none"; });
+  $("settings-modal").addEventListener("click", (e) => {
+    if (e.target === $("settings-modal")) $("settings-modal").style.display = "none";
+  });
+  $("open-tag-settings").addEventListener("click", () => {
+    $("settings-modal").style.display = "none";
+    openTagSettings();
+  });
+  $("reset-connection").addEventListener("click", () => {
     if (confirm("接続設定をリセットしますか? (トークン等をブラウザから削除)")) {
       clearAuth();
       location.reload();
     }
   });
+  $("tag-settings-close").addEventListener("click", () => { $("tag-settings-modal").style.display = "none"; });
+  $("tag-settings-modal").addEventListener("click", (e) => {
+    if (e.target === $("tag-settings-modal")) $("tag-settings-modal").style.display = "none";
+  });
+  $("tag-add-group").addEventListener("click", addTagGroup);
 
   $("btn-storage").addEventListener("click", openStorageModal);
   $("storage-close").addEventListener("click", closeStorageModal);
@@ -2021,11 +2271,6 @@ function bindEvents() {
   $("edit-start-date").addEventListener("blur", (e) => commitProductField("startDate", e.target.value));
   $("edit-product-name").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   $("edit-start-date").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-
-  // タグボタン(複数選択可)
-  document.querySelectorAll(".editor-tag-btn").forEach((btn) => {
-    btn.addEventListener("click", () => toggleProductTag(btn.dataset.tag));
-  });
 
   // 商品画像の差し替え
   $("editor-img-change").addEventListener("click", () => $("editor-img-input").click());
