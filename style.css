@@ -2116,8 +2116,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* タグ編集モーダル */
 .tag-settings-inner {
-  max-width: 760px;
-  width: 94vw;
+  max-width: 1100px;
+  width: 95vw;
   max-height: 88vh;
   display: flex;
   flex-direction: column;
