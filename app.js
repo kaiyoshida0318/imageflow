@@ -1884,9 +1884,10 @@ function updateTagButtons(p) {
     const btns = g.tags.map((t) => {
       const isActive = tags.includes(t.name);
       const bg = t.color || "#888";
+      // 未選択は白背景+その色の枠線+その色の文字。選択時はその色の塗り+白文字。
       const style = isActive
         ? `background:${bg};color:#fff;border-color:${bg};`
-        : `background:${hexToLight(bg)};color:${bg};border-color:${hexToLight(bg)};`;
+        : `background:#fff;color:${bg};border-color:${bg};`;
       return `<button type="button" class="editor-tag-btn${isActive ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
     }).join("");
     return `<div class="editor-tag-group">
