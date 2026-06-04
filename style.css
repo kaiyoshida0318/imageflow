@@ -2071,6 +2071,73 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-left-actions { margin-top: 14px; }
 .editor-left-actions .btn-danger { padding: 7px 14px; font-size: 12px; }
 
+/* v3.36.0: タグ選択UI(編集ページ左カラム) */
+.editor-tags {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.editor-tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.editor-tag-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.editor-tag-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.editor-tag-btn {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--card);
+  transition: all 0.15s;
+  cursor: pointer;
+}
+.editor-tag-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.editor-tag-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* トップ画面のタグラベル(商品名と編集の間) */
+.row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+.row-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* ========== ImageFlow v1.9: 全画面テキストエディタ ========== */
 .text-fullscreen {
   position: fixed;
