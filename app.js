@@ -1101,17 +1101,21 @@ function renderTagSettings() {
         const sel = (c.toLowerCase() === (t.color || "").toLowerCase()) ? " selected" : "";
         return `<button type="button" class="tag-color-swatch${sel}" data-gi="${gi}" data-ti="${ti}" data-color="${c}" style="background:${c}" title="${c}"></button>`;
       }).join("");
+      const curColor = t.color || "#888";
       return `
         <div class="tag-row">
-          <input type="text" class="tag-name-input" data-gi="${gi}" data-ti="${ti}" value="${escapeHtml(t.name)}" placeholder="タグ名" />
-          <div class="tag-color-palette">${paletteHtml}</div>
+          <input type="text" class="tag-name-input" data-gi="${gi}" data-ti="${ti}" value="${escapeHtml(t.name)}" placeholder="タグ名" maxlength="10" />
+          <div class="tag-color-picker" data-gi="${gi}" data-ti="${ti}">
+            <button type="button" class="tag-color-current" data-gi="${gi}" data-ti="${ti}" style="background:${curColor}" title="クリックで色を選択"></button>
+            <div class="tag-color-dropdown">${paletteHtml}</div>
+          </div>
           <button type="button" class="tag-row-remove" data-gi="${gi}" data-ti="${ti}" title="このタグを削除">×</button>
         </div>`;
     }).join("");
     return `
       <div class="tag-group-card" data-gi="${gi}">
         <div class="tag-group-head">
-          <input type="text" class="tag-group-name-input" data-gi="${gi}" value="${escapeHtml(g.name)}" placeholder="グループ名" />
+          <input type="text" class="tag-group-name-input" data-gi="${gi}" value="${escapeHtml(g.name)}" placeholder="グループ名" maxlength="20" />
           <div class="tag-group-head-actions">
             <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="up" title="上へ" ${gi === 0 ? "disabled" : ""}>↑</button>
             <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="down" title="下へ" ${gi === tagGroups.length - 1 ? "disabled" : ""}>↓</button>
@@ -1161,12 +1165,24 @@ function bindTagSettingsEvents() {
     });
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   });
-  // 色の選択
+  // 色の選択(色スウォッチクリック → 値変更してドロップダウンを閉じる)
   wrap.querySelectorAll(".tag-color-swatch").forEach((sw) => {
-    sw.addEventListener("click", () => {
+    sw.addEventListener("click", (e) => {
+      e.stopPropagation();
       const gi = parseInt(sw.dataset.gi), ti = parseInt(sw.dataset.ti);
       tagGroups[gi].tags[ti].color = sw.dataset.color;
       saveTagSettings();
+    });
+  });
+  // 現在色クリックでドロップダウン開閉(同時に他のものは閉じる)
+  wrap.querySelectorAll(".tag-color-current").forEach((cur) => {
+    cur.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const picker = cur.closest(".tag-color-picker");
+      const wasOpen = picker.classList.contains("open");
+      // すべて閉じてから、押したものだけ開く(トグル)
+      wrap.querySelectorAll(".tag-color-picker.open").forEach((p) => p.classList.remove("open"));
+      if (!wasOpen) picker.classList.add("open");
     });
   });
   // タグの削除
@@ -2205,6 +2221,10 @@ function bindEvents() {
   $("tag-settings-close").addEventListener("click", () => { $("tag-settings-modal").style.display = "none"; });
   $("tag-settings-modal").addEventListener("click", (e) => {
     if (e.target === $("tag-settings-modal")) $("tag-settings-modal").style.display = "none";
+  });
+  // モーダル内のどこかをクリックしたら、開いてる色ドロップダウンを閉じる(スウォッチ自身/現在色ボタンは内側でstopPropagation済み)
+  $("tag-settings-modal").addEventListener("click", () => {
+    document.querySelectorAll(".tag-color-picker.open").forEach((p) => p.classList.remove("open"));
   });
   $("tag-add-group").addEventListener("click", addTagGroup);
 
