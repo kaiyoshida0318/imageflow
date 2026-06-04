@@ -2071,7 +2071,194 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .editor-left-actions { margin-top: 14px; }
 .editor-left-actions .btn-danger { padding: 7px 14px; font-size: 12px; }
 
-/* v3.36.0→v3.37.0: タグ選択UI(編集ページ左カラム) + 5色のカラフル配色 */
+/* v3.38.0: 設定モーダル(⚙) */
+.settings-inner {
+  max-width: 480px;
+  width: 92vw;
+}
+.settings-body {
+  padding: 16px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-item {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.settings-item-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.settings-item-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.settings-item-danger:hover {
+  border-color: #c2185b;
+  background: #fde2eb;
+}
+.settings-item-danger:hover .settings-item-main { color: #c2185b; }
+
+/* タグ編集モーダル */
+.tag-settings-inner {
+  max-width: 760px;
+  width: 94vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.tag-settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tag-settings-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  background: var(--bg);
+}
+.tag-group-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--card);
+}
+.tag-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tag-group-name-input {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+}
+.tag-group-name-input:hover { background: var(--bg-2); }
+.tag-group-name-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.tag-group-head-actions {
+  display: flex;
+  gap: 4px;
+}
+.tag-group-move {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.tag-group-move:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.tag-group-move:disabled { opacity: 0.3; cursor: not-allowed; }
+.tag-group-remove {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid #f8bbd0;
+  border-radius: 4px;
+  background: #fde2eb;
+  color: #c2185b;
+}
+.tag-group-remove:hover { background: #c2185b; color: #fff; border-color: #c2185b; }
+.tag-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 6px;
+}
+.tag-row:hover { background: var(--bg-2); }
+.tag-name-input {
+  width: 140px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--sans);
+  flex-shrink: 0;
+}
+.tag-name-input:focus { border-color: var(--accent); outline: none; }
+.tag-color-palette {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.tag-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.15s;
+}
+.tag-color-swatch:hover { transform: scale(1.15); }
+.tag-color-swatch.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--card);
+}
+.tag-row-remove {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tag-row-remove:hover { border-color: #c2185b; color: #c2185b; background: #fde2eb; }
+.tag-add-row {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  width: 100%;
+}
+.tag-add-row:hover { border-color: var(--accent); color: var(--accent); border-style: solid; }
+
+/* v3.36.0→v3.38.0: タグ選択UI(編集ページ) + トップ画面ラベル */
 .editor-tags {
   margin-top: 16px;
   padding-top: 14px;
@@ -2105,45 +2292,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   padding: 4px 10px;
   border: 1px solid;
   border-radius: 999px;
-  transition: all 0.15s;
+  transition: filter 0.15s;
   cursor: pointer;
 }
-
-/* 5色のカラフル配色: 通常時は薄い背景+濃い文字、アクティブ時は濃い背景+白文字 */
-/* 新商品: ピンク */
-.editor-tag-btn[data-tag="新商品"] {
-  background: #fde2eb; color: #c2185b; border-color: #f8bbd0;
-}
-.editor-tag-btn[data-tag="新商品"]:hover { background: #f8bbd0; }
-.editor-tag-btn[data-tag="新商品"].active { background: #c2185b; color: #fff; border-color: #c2185b; }
-
-/* リニューアル: 紫 */
-.editor-tag-btn[data-tag="リニューアル"] {
-  background: #ede1f5; color: #6a1b9a; border-color: #d1c4e9;
-}
-.editor-tag-btn[data-tag="リニューアル"]:hover { background: #d1c4e9; }
-.editor-tag-btn[data-tag="リニューアル"].active { background: #6a1b9a; color: #fff; border-color: #6a1b9a; }
-
-/* 元のLP: 青 */
-.editor-tag-btn[data-tag="元のLP"] {
-  background: #dde9f7; color: #1565c0; border-color: #bbdefb;
-}
-.editor-tag-btn[data-tag="元のLP"]:hover { background: #bbdefb; }
-.editor-tag-btn[data-tag="元のLP"].active { background: #1565c0; color: #fff; border-color: #1565c0; }
-
-/* レビュー: 緑 */
-.editor-tag-btn[data-tag="レビュー"] {
-  background: #dcefdf; color: #2e7d32; border-color: #c8e6c9;
-}
-.editor-tag-btn[data-tag="レビュー"]:hover { background: #c8e6c9; }
-.editor-tag-btn[data-tag="レビュー"].active { background: #2e7d32; color: #fff; border-color: #2e7d32; }
-
-/* ライバル画像: 黄/橙 */
-.editor-tag-btn[data-tag="ライバル画像"] {
-  background: #fff1cc; color: #b27300; border-color: #ffe0a0;
-}
-.editor-tag-btn[data-tag="ライバル画像"]:hover { background: #ffe0a0; }
-.editor-tag-btn[data-tag="ライバル画像"].active { background: #c98600; color: #fff; border-color: #c98600; }
+.editor-tag-btn:hover { filter: brightness(0.92); }
 
 /* トップ画面のタグラベル: グループ別に行分け */
 .row-tags {
@@ -2165,12 +2317,6 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-radius: 999px;
   white-space: nowrap;
 }
-/* トップ画面のラベル色(編集ボタンと同じ5色) */
-.row-tag[data-tag="新商品"]      { background: #c2185b; color: #fff; }
-.row-tag[data-tag="リニューアル"] { background: #6a1b9a; color: #fff; }
-.row-tag[data-tag="元のLP"]      { background: #1565c0; color: #fff; }
-.row-tag[data-tag="レビュー"]    { background: #2e7d32; color: #fff; }
-.row-tag[data-tag="ライバル画像"] { background: #c98600; color: #fff; }
 
 /* ========== ImageFlow v1.9: 全画面テキストエディタ ========== */
 .text-fullscreen {
