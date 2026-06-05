@@ -3358,25 +3358,26 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-bottom-color: var(--accent);
 }
 
-/* 2段目: タグフィルタ(メインタブ時) - グループ別に縦積み */
+/* 2段目: タグフィルタ(メインタブ時) - 「全て」の右側にグループを横並び */
 .tag-filter-list {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
   flex: 1;
-  align-items: stretch;
   padding: 8px 0;
 }
-.tag-filter-row {
+.tag-filter-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.tag-filter-group-block {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-}
-.tag-filter-row-all {
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-  border-bottom: 1px dashed var(--line);
 }
 .tag-filter-group-label {
   font-family: var(--mono);
@@ -3384,14 +3385,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-weight: 600;
   color: var(--ink-soft);
   letter-spacing: 0.04em;
-  min-width: 90px;
   flex-shrink: 0;
 }
 .tag-filter-row-btns {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  flex: 1;
 }
 .tag-filter-btn {
   font-family: var(--sans);
