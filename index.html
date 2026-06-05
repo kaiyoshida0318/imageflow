@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.41.2" />
+<link rel="stylesheet" href="style.css?v=3.42.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.41.2</span>
+    <span class="version-badge">v3.42.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -65,6 +65,7 @@
 <nav class="top-tab-bar">
   <div class="top-tab" id="top-tab-main" data-tab="main">メイン</div>
   <div class="top-tab" id="top-tab-xmind" data-tab="xmind">工程表</div>
+  <div class="top-tab" id="top-tab-templates" data-tab="templates">テンプレ</div>
 </nav>
 <nav class="view-bar">
   <!-- 1段目で「メイン」選択時: タグフィルタ -->
@@ -72,6 +73,11 @@
   <!-- 1段目で「工程表」選択時: 工程表タブ + 追加ボタン -->
   <div id="view-list" class="view-list" style="display:none"></div>
   <button id="btn-add-mindmap" class="btn-tab-add" title="新しい工程表(xmind)を追加" style="display:none">+</button>
+  <!-- 1段目で「テンプレ」選択時: 追加ボタン -->
+  <div id="templates-bar" class="templates-bar" style="display:none">
+    <span class="templates-bar-label">テンプレ一覧</span>
+    <button id="btn-add-template" class="btn-tab-add" title="新しいテンプレを追加">+</button>
+  </div>
 </nav>
 
 <!-- 検索バーは隠しinputとして保持(互換) -->
@@ -104,6 +110,11 @@
     </div>
     <div id="mindmap-canvas" class="mindmap-canvas" tabindex="0"></div>
     <p class="field-hint" style="margin-top:12px"><kbd>↑↓←→</kbd>移動 / <kbd>Tab</kbd>子追加 / <kbd>Enter</kbd>兄弟追加 / <kbd>F2</kbd>編集 / <kbd>Delete</kbd>削除 / 背景ドラッグで矩形選択 / <kbd>Ctrl+Z</kbd>戻る / <kbd>Ctrl+S</kbd>保存</p>
+  </div>
+
+  <!-- テンプレ表示エリア -->
+  <div id="templates-view" style="display:none">
+    <div id="templates-list" class="templates-list"></div>
   </div>
 </main>
 
@@ -142,7 +153,7 @@
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
   <div class="modal-inner editor">
-    <!-- v3.41.2: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
+    <!-- v3.42.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
     <div id="editor-action-bar" class="editor-action-bar">
       <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
       <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
@@ -265,6 +276,6 @@
 </div>
 
 
-<script src="app.js?v=3.41.2"></script>
+<script src="app.js?v=3.42.0"></script>
 </body>
 </html>
