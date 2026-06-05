@@ -1,3835 +1,3952 @@
-/* ==============================================================
-   ImageFlow — Frontend app (v3.5.0)
-   商品レコード中心の構成。GitHub REST API で data.json と
-   images/ , csv/ を直接 commit する。
-   v3.5.0: 編集ページ右上に3ボタン(保存 / 保存して閉じる / 保存せず閉じる)を固定。
-   ============================================================== */
-
-const STORAGE_KEY = "imageFlow.auth.v1";
-const DATA_PATH = "data.json";
-const IMAGES_DIR = "images";
-const CSV_DIR = "csv";
-const FILES_DIR = "files";
-
-// 初期デフォルト項目(初めて使うとき / 定義が空のとき)
-const DEFAULT_SECTIONS = [
-  { key: "top", label: "TOP画像" },
-  { key: "analysis", label: "分析" }
-];
-
-// iid から sectionItem を取得
-function getItem(p, iid) {
-  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
-  const it = p.sectionItems.find((x) => x.iid === iid);
-  if (it) ensureItemArrays(it);
-  return it;
-}
-
-// item の各配列を保証し、旧 texts[] を textsTop[] へ移行する
-function ensureItemArrays(it) {
-  if (!Array.isArray(it.images)) it.images = [];
-  if (!Array.isArray(it.files)) it.files = [];
-  if (!Array.isArray(it.imagesFinal)) it.imagesFinal = [];
-  if (!Array.isArray(it.filesFinal)) it.filesFinal = [];
-  // 旧形式の移行(1度だけ): textsTop が未定義のときに、
-  //   question(指示文) → texts(回答) の順で textsTop に統合する。
-  // v3.12で廃止した question欄の中身もここで救済して表示に復活させる。
-  if (!Array.isArray(it.textsTop)) {
-    const merged = [];
-    if (it.question !== undefined && it.question !== null && String(it.question).trim() !== "") {
-      merged.push(String(it.question));
-    }
-    if (Array.isArray(it.texts)) {
-      it.texts.forEach((t) => { if (t !== undefined && t !== null && String(t).trim() !== "") merged.push(String(t)); });
-    }
-    it.textsTop = merged;
-  } else {
-    // textsTop が既にある場合でも、未移行の question が残っていれば先頭に取り込む
-    if (it.question !== undefined && it.question !== null && String(it.question).trim() !== "") {
-      it.textsTop.unshift(String(it.question));
-    }
-  }
-  delete it.question;
-  delete it.texts;
-  if (!Array.isArray(it.textsTop)) it.textsTop = [];
-  if (!Array.isArray(it.textsBottom)) it.textsBottom = [];
-  // 完成品チェック状態(v3.26): imagesFinalに存在するpathだけ保持
-  if (!Array.isArray(it.imagesFinalChecked)) it.imagesFinalChecked = [];
-  it.imagesFinalChecked = it.imagesFinalChecked.filter((p) => it.imagesFinal.includes(p));
-}
-
-// pos("top"/"bottom") に応じたテキスト配列名
-function textArrName(pos) {
-  return pos === "bottom" ? "textsBottom" : "textsTop";
-}
-
-let auth = null;
-let dataSha = null;
-let products = [];
-let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
-let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
-let mindmaps = [];      // マインドマップ [{id, name, root}]
-let templates = [];     // テンプレ [{id, title, body, bodyFull}]
-let activeTemplateId = null; // 選択中のテンプレID
-let activeViewId = "_main"; // "_main" or mindmap.id
-let activeTopTab = "main"; // "main" or "xmind" or "templates"
-let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
-let selectedNodeId = null; // 編集中の選択ノード
-let mmDirty = false;       // マインドマップに未保存の変更があるか
-let mmHistory = [];        // 履歴スタック(各エントリ:該当マインドマップのJSONスナップショット)
-let mmHistoryIndex = -1;   // 現在の位置(-1=履歴なし)
-let mmHistoryMapId = null; // 現在の履歴が対象としているマップID
-const MM_HISTORY_LIMIT = 50;
-let currentDetailId = null;
-
-// タグ定義のデフォルト(初回起動時 or tagGroupsが空のとき使われる)
-const DEFAULT_TAG_GROUPS = [
-  { id: "content", name: "商品内容", tags: [
-    { name: "新商品", color: "#c2185b" },
-    { name: "リニューアル", color: "#6a1b9a" }
-  ]},
-  { id: "source", name: "元データ", tags: [
-    { name: "元のLP", color: "#1565c0" },
-    { name: "レビュー", color: "#2e7d32" },
-    { name: "ライバル画像", color: "#c98600" }
-  ]}
-];
-
-// カラーピッカー用のプリセット16色
-const TAG_COLOR_PALETTE = [
-  "#c2185b", "#d81b60", "#e64a19", "#c98600", "#8d6e63",
-  "#2e7d32", "#388e3c", "#00897b", "#0288d1", "#1565c0",
-  "#5e35b1", "#6a1b9a", "#7b1fa2", "#455a64", "#37474f", "#546e7a"
-];
-// v3.8.0: 表示は「画像一覧 + 縦長サムネ」固定。viewMode/galleryThumb は廃止。
-// 画像一覧の表示モード(3択): "show"=素材を表示 / "hide"=素材を除外 / "checked"=チェック済み完成品のみ
-let galleryViewMode = (() => {
-  try {
-    const v = localStorage.getItem("imageFlow.galleryViewMode");
-    if (v === "show" || v === "hide" || v === "checked") return v;
-    // 旧キーからの移行
-    const old = localStorage.getItem("imageFlow.galleryExcludeMaterial");
-    return old === "1" ? "hide" : "show";
-  } catch { return "show"; }
-})();
-
-// 画像一覧の行表示: false=1行(横スクロール) / true=複数行(折り返して全体表示)
-let galleryWrap = (() => {
-  try { return localStorage.getItem("imageFlow.galleryWrap") === "1"; }
-  catch { return false; }
-})();
-
-// 1行表示時のページング: 0始まり。15枚刻みで表示範囲を切り替える。
-const GALLERY_PAGE_SIZE = 15;
-let galleryPage = 0;
-
-// 保存の直列化用(同時に複数のsaveDataが走るとGitHubが409を返し続けるため)
-let saveChain = Promise.resolve();
-let manualSaving = false; // 手動保存ボタン処理中はblur自動保存をスキップ
-
-let pendingImage = null;
-
-// ---------- util ----------
-const $ = (id) => document.getElementById(id);
-const b64encode = (str) => btoa(unescape(encodeURIComponent(str)));
-const b64decode = (str) => decodeURIComponent(escape(atob(str)));
-const fmtDate = (iso) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-};
-const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-
-function todayShort() {
-  const d = new Date();
-  const yy = String(d.getFullYear()).slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yy}-${mm}${dd}`;
-}
-
-// ---------- GitHub API ----------
-async function ghFetch(path, options = {}) {
-  const url = `https://api.github.com/repos/${auth.owner}/${auth.repo}/${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Authorization": `token ${auth.token}`,
-      "Accept": "application/vnd.github+json",
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
-  if (!res.ok && res.status !== 404 && res.status !== 409 && res.status !== 422) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `GitHub API error: ${res.status}`);
-  }
-  return res;
-}
-
-async function loadData() {
-  const res = await ghFetch(`contents/${DATA_PATH}?ref=${auth.branch}`);
-  if (res.status === 404) {
-    products = [];
-    mindmaps = [];
-    templates = [];
-    dataSha = null;
-    if (tagGroups.length === 0) tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
-    return;
-  }
-  const data = await res.json();
-  dataSha = data.sha;
-  try {
-    const json = JSON.parse(b64decode(data.content.replace(/\n/g, "")));
-    products = Array.isArray(json.products) ? json.products : [];
-    sectionDefs = Array.isArray(json.sectionDefs) ? json.sectionDefs : [];
-    tagGroups = Array.isArray(json.tagGroups) ? json.tagGroups : [];
-    mindmaps = Array.isArray(json.mindmaps) ? json.mindmaps : [];
-    templates = Array.isArray(json.templates) ? json.templates : [];
-    // 項目定義が無ければデフォルトで初期化
-    if (sectionDefs.length === 0) {
-      sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
-    }
-    // タグ定義が無ければデフォルトで初期化(深いコピーで参照を切る)
-    if (tagGroups.length === 0) {
-      tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
-    }
-    // 旧形式(商品ごとのsections配列)から新形式(sectionData)へ移行
-    migrateProducts();
-  } catch (e) {
-    console.error("data.json 解析失敗", e);
-    products = [];
-    sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
-    tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
-    mindmaps = [];
-    templates = [];
-  }
-}
-
-// データ移行: 旧 sections[] / sectionData{} → 新 sectionItems[]
-// sectionItems: [{iid, key, texts:[], images:[], question?}] (順序保持・同じkey複数可)
-function migrateProducts() {
-  products.forEach((p) => {
-    // さらに古い形式: p.sections[] → p.sectionData{}
-    if (Array.isArray(p.sections)) {
-      if (!p.sectionData) p.sectionData = {};
-      p.sections.forEach((s) => {
-        if (!p.sectionData[s.key]) {
-          p.sectionData[s.key] = { texts: s.texts || [], images: s.images || [] };
-        }
-        if (((s.texts && s.texts.length) || (s.images && s.images.length)) &&
-            !sectionDefs.some((d) => d.key === s.key)) {
-          sectionDefs.push({ key: s.key, label: s.label || s.key });
-        }
-      });
-      delete p.sections;
-    }
-    // 新形式 sectionItems が無ければ作る
-    if (!Array.isArray(p.sectionItems)) {
-      p.sectionItems = [];
-      // sectionData{} があれば、定義順に並べて移行
-      if (p.sectionData && typeof p.sectionData === "object") {
-        // まず定義順
-        sectionDefs.forEach((def) => {
-          const sd = p.sectionData[def.key];
-          if (sd) {
-            p.sectionItems.push({
-              iid: genId(), key: def.key,
-              texts: sd.texts || [], images: sd.images || [],
-              ...(sd.question !== undefined ? { question: sd.question } : {})
-            });
-          }
-        });
-        // 定義に無いキーも拾う
-        const defKeys = new Set(sectionDefs.map((d) => d.key));
-        Object.keys(p.sectionData).forEach((key) => {
-          if (!defKeys.has(key)) {
-            const sd = p.sectionData[key];
-            p.sectionItems.push({
-              iid: genId(), key,
-              texts: sd.texts || [], images: sd.images || [],
-              ...(sd.question !== undefined ? { question: sd.question } : {})
-            });
-          }
-        });
-      }
-      // v3.7.0: 雛形廃止のため、空でも自動で項目を並べない(項目ゼロのまま)
-      delete p.sectionData; // 旧形式は破棄
-    }
-    // 各itemの配列を保証(textsTop/textsBottomへの移行含む)
-    p.sectionItems.forEach((it) => {
-      if (!it.iid) it.iid = genId();
-      ensureItemArrays(it);
-    });
-  });
-}
-
-// 外向きのsaveData: 直前の保存の完了を待ってから実行(直列化)
-function saveData(commitMessage, mergeFn) {
-  const run = () => _saveDataImpl(commitMessage, mergeFn);
-  // 前の保存が成功/失敗どちらでも、次の保存は必ず走らせる
-  saveChain = saveChain.then(run, run);
-  return saveChain;
-}
-
-async function _saveDataImpl(commitMessage, mergeFn) {
-  const MAX_RETRIES = 5;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const body = {
-      message: commitMessage,
-      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps, templates }, null, 2)),
-      branch: auth.branch
-    };
-    if (dataSha) body.sha = dataSha;
-
-    const res = await ghFetch(`contents/${DATA_PATH}`, {
-      method: "PUT",
-      body: JSON.stringify(body)
-    });
-
-    if (res.ok) {
-      const result = await res.json();
-      dataSha = result.content.sha;
-      return;
-    }
-
-    const errBody = await res.json().catch(() => ({}));
-    const isConflict = res.status === 409 || res.status === 422 ||
-                       (errBody.message && /does not match|sha/i.test(errBody.message));
-
-    if (isConflict) {
-      console.warn(`競合検出 (attempt ${attempt + 1}/${MAX_RETRIES}) - 最新を取得してリトライ`);
-      // GitHub側の反映ラグを吸収するため少し待つ(回数に応じて伸ばす)
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      const mine = products.slice();
-      const myMindmaps = mindmaps.slice();
-      const myTemplates = templates.slice();
-      await loadData();
-      if (mergeFn) {
-        products = mergeFn(products);
-      } else {
-        const myMap = new Map(mine.map((p) => [p.id, p]));
-        const merged = products.filter((p) => !myMap.has(p.id));
-        merged.push(...mine);
-        merged.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-        products = merged;
-      }
-      // マインドマップ・テンプレはローカル変更を優先
-      mindmaps = myMindmaps;
-      templates = myTemplates;
-      continue;
-    }
-
-    throw new Error(errBody.message || "data.json の保存に失敗");
-  }
-  throw new Error("data.json の保存が複数回競合しました。ページをリロードして再度お試しください。");
-}
-
-async function uploadFile(path, base64Content, commitMessage) {
-  const res = await ghFetch(`contents/${path}`, {
-    method: "PUT",
-    body: JSON.stringify({
-      message: commitMessage,
-      content: base64Content,
-      branch: auth.branch
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || "ファイルアップロードに失敗");
-  }
-}
-
-async function deleteFile(path, sha, commitMessage) {
-  if (!sha) {
-    const info = await ghFetch(`contents/${path}?ref=${auth.branch}`);
-    if (info.status === 404) return;
-    const j = await info.json();
-    sha = j.sha;
-  }
-  await ghFetch(`contents/${path}`, {
-    method: "DELETE",
-    body: JSON.stringify({ message: commitMessage, sha, branch: auth.branch })
-  });
-}
-
-const blobCache = new Map();
-
-async function fetchAsBlobUrl(path, isImage = true, genericFile = false) {
-  if (blobCache.has(path)) return blobCache.get(path);
-  try {
-    const res = await ghFetch(`contents/${path}?ref=${auth.branch}`);
-    if (!res.ok) throw new Error(`取得失敗: ${path}`);
-    const data = await res.json();
-
-    let cleanBase64;
-    if (data.content && data.encoding === "base64") {
-      cleanBase64 = data.content.replace(/\s/g, "");
-    } else if (data.sha) {
-      const blobRes = await ghFetch(`git/blobs/${data.sha}`);
-      if (!blobRes.ok) throw new Error(`Git Blob API失敗: ${path}`);
-      const blobData = await blobRes.json();
-      if (!blobData.content) throw new Error(`contentが空: ${path}`);
-      cleanBase64 = blobData.content.replace(/\s/g, "");
-    } else {
-      throw new Error(`contentもshaも取得できず: ${path}`);
-    }
-
-    const binary = atob(cleanBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    let mime;
-    if (isImage) {
-      const ext = (path.split(".").pop() || "png").toLowerCase();
-      mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
-           : ext === "gif" ? "image/gif"
-           : ext === "webp" ? "image/webp"
-           : ext === "svg" ? "image/svg+xml"
-           : "image/png";
-    } else if (genericFile) {
-      mime = "application/octet-stream";
-    } else {
-      mime = "text/csv";
-    }
-    const blob = new Blob([bytes], { type: mime });
-    const url = URL.createObjectURL(blob);
-    blobCache.set(path, url);
-    return url;
-  } catch (e) {
-    console.error("読み込み失敗", path, e);
-    return "";
-  }
-}
-
-function loadImageInto(imgEl, path) {
-  imgEl.dataset.loading = "1";
-  fetchAsBlobUrl(path, true).then((url) => {
-    if (url) imgEl.src = url;
-    imgEl.removeAttribute("data-loading");
-  });
-}
-
-// ---------- 認証 ----------
-function loadAuth() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
-}
-function saveAuth(a) { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
-function clearAuth() { localStorage.removeItem(STORAGE_KEY); }
-
-async function verifyAuth(a) {
-  const res = await fetch(`https://api.github.com/repos/${a.owner}/${a.repo}`, {
-    headers: { "Authorization": `token ${a.token}`, "Accept": "application/vnd.github+json" }
-  });
-  if (!res.ok) throw new Error("リポジトリにアクセスできません。ユーザー名・リポジトリ名・トークン権限をご確認ください。");
-  return true;
-}
-
-// ---------- レンダリング(商品一覧) ----------
-// 商品の全画像パスを集める(商品画像 + 各項目の画像)
-function collectAllImages(p, mode) {
-  // mode: "show" 素材も含めて全部 / "hide" 素材除外(メイン+完成品) / "checked" チェック済み完成品のみ
-  const imgs = [];
-  if (Array.isArray(p.sectionItems)) {
-    for (const item of p.sectionItems) {
-      if (mode === "checked") {
-        // チェック済みの完成品画像だけ。item.imagesFinalChecked: 配列(=チェック済みパス)を想定
-        const checked = Array.isArray(item.imagesFinalChecked) ? item.imagesFinalChecked : [];
-        if (Array.isArray(item.imagesFinal)) {
-          for (const p2 of item.imagesFinal) {
-            if (checked.includes(p2)) imgs.push(p2);
-          }
-        }
-      } else {
-        if (mode !== "hide" && item.images) imgs.push(...item.images);
-        if (item.imagesFinal) imgs.push(...item.imagesFinal);
-      }
-    }
-  }
-  // メイン商品画像は show/hide のとき先頭に。checked は完成品のみなので含めない。
-  if (mode !== "checked" && p.image) imgs.unshift(p.image);
-  // checkedモード: p.finalOrder で並び替え(独立した表示順を保持)
-  if (mode === "checked" && Array.isArray(p.finalOrder) && p.finalOrder.length) {
-    const set = new Set(imgs);
-    const ordered = [];
-    // finalOrderに載っていてimgsにもあるものを先に
-    for (const path of p.finalOrder) {
-      if (set.has(path)) { ordered.push(path); set.delete(path); }
-    }
-    // finalOrderに無いもの(新規にチェックされたもの等)は末尾に追加(デフォルト順)
-    for (const path of imgs) if (set.has(path)) ordered.push(path);
-    return ordered;
-  }
-  return imgs;
-}
-
-function render() {
-  // stat-count: メインモード時はフィルタ後の件数、工程表時は全件
-  const visibleCount = (activeTopTab === "main" && activeTagFilter !== "_all")
-    ? products.filter((p) => Array.isArray(p.tags) && p.tags.includes(activeTagFilter)).length
-    : products.length;
-  $("stat-count").textContent = visibleCount;
-  const gallery = $("gallery");
-  $("loading").style.display = "none";
-
-  // 1段目タブ + 2段目バー描画
-  renderTopTabBar();
-
-  // テンプレモード
-  if (activeTopTab === "templates") {
-    gallery.style.display = "none";
-    $("empty-state").style.display = "none";
-    $("gallery-pager").style.display = "none";
-    $("mindmap-view").style.display = "none";
-    $("templates-view").style.display = "block";
-    renderTemplates();
-    return;
-  }
-  $("templates-view").style.display = "none";
-
-  // 工程表モード: マインドマップ画面
-  if (activeTopTab === "xmind" && activeViewId !== "_main") {
-    gallery.style.display = "none";
-    $("empty-state").style.display = "none";
-    $("gallery-pager").style.display = "none";
-    $("mindmap-view").style.display = "block";
-    renderMindmap();
-    return;
-  }
-  // 工程表モードだがマップが未選択 or 0個 → 案内
-  if (activeTopTab === "xmind") {
-    gallery.style.display = "none";
-    $("empty-state").style.display = "block";
-    $("empty-state").innerHTML = '<div class="empty-illust">🗺️</div><p>右の <b>+</b> から新しい工程表を作成してください。</p>';
-    $("gallery-pager").style.display = "none";
-    $("mindmap-view").style.display = "none";
-    return;
-  }
-  // メインモード
-  $("mindmap-view").style.display = "none";
-  gallery.style.display = "";
-
-  if (products.length === 0) {
-    $("empty-state").style.display = "block";
-    $("empty-state").innerHTML = '<div class="empty-illust">◇ ◆ ◇</div><p>まだデータがありません。右上の <b>+ Add</b> から追加しましょう。</p>';
-    gallery.innerHTML = "";
-    return;
-  }
-  $("empty-state").style.display = "none";
-
-  // 画像一覧(縦長サムネ)
-  renderGalleryView();
-}
-
-// 1段目タブと、その下の2段目バーを描画
-function renderTopTabBar() {
-  // 1段目: メイン / 工程表 / テンプレ のトグル
-  $("top-tab-main").classList.toggle("active", activeTopTab === "main");
-  $("top-tab-xmind").classList.toggle("active", activeTopTab === "xmind");
-  $("top-tab-templates").classList.toggle("active", activeTopTab === "templates");
-  // 2段目: 1段目の選択によって表示切替
-  const showMain = activeTopTab === "main";
-  const showXmind = activeTopTab === "xmind";
-  const showTemplates = activeTopTab === "templates";
-  $("tag-filter-list").style.display = showMain ? "" : "none";
-  $("view-list").style.display = showXmind ? "" : "none";
-  $("btn-add-mindmap").style.display = showXmind ? "" : "none";
-  $("templates-bar").style.display = showTemplates ? "" : "none";
-  if (showMain) renderTagFilterBar();
-  else if (showXmind) renderViewBar();
-  // テンプレバーは静的なのでrender不要
-}
-
-// メインタブ下のタグフィルタバー(「全て」の右側にグループ別タグを横並びで配置)
-function renderTagFilterBar() {
-  const wrap = $("tag-filter-list");
-  const tagBtn = (t, active) => {
-    const bg = t.color || "#888";
-    const style = active
-      ? `background:${bg};color:#fff;border-color:${bg};`
-      : `background:#fff;color:${bg};border-color:${bg};`;
-    return `<button class="tag-filter-btn${active ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
-  };
-  // グループ別(空グループは省略)
-  const groupBlocks = (tagGroups || []).map((g) => {
-    if (!g || !Array.isArray(g.tags) || g.tags.length === 0) return "";
-    const btns = g.tags.map((t) => tagBtn(t, activeTagFilter === t.name)).join("");
-    return `<div class="tag-filter-group-block">
-        <span class="tag-filter-group-label">${escapeHtml(g.name)}:</span>
-        <div class="tag-filter-row-btns">${btns}</div>
-      </div>`;
-  }).join("");
-  // 「全て」を左端、その右にグループブロックを横並び(画面が狭ければ折り返し)
-  wrap.innerHTML = `
-    <button class="tag-filter-btn tag-filter-all${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>
-    <div class="tag-filter-divider"></div>
-    ${groupBlocks}
-  `;
-  // イベントbind
-  wrap.querySelectorAll(".tag-filter-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const newFilter = btn.dataset.tag;
-      if (newFilter === activeTagFilter) return;
-      activeTagFilter = newFilter;
-      render();
-    });
-  });
-}
-
-// ==============================================
-// テンプレ機能
-// ==============================================
-
-// テンプレ一覧をタブ式に描画。タブで1つ選択→下に中身を表示。
-function renderTemplates() {
-  // タブバーを描画
-  renderTemplatesTabBar();
-  const wrap = $("templates-list");
-  // テンプレが0個
-  if (templates.length === 0) {
-    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">📝</div><p>テンプレがまだありません。<br>上の <b>+</b> から追加しましょう。</p></div>';
-    return;
-  }
-  // activeTemplateIdが無効なら最初のテンプレを選択
-  if (!activeTemplateId || !templates.find((x) => x.id === activeTemplateId)) {
-    activeTemplateId = templates[0].id;
-  }
-  const t = templates.find((x) => x.id === activeTemplateId);
-  if (!t) {
-    wrap.innerHTML = "";
-    return;
-  }
-  // 選択中のテンプレ1個だけ表示
-  wrap.innerHTML = `
-    <div class="template-card" data-id="${escapeHtml(t.id)}">
-      <div class="template-card-head">
-        <input type="text" class="template-title-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.title || "")}" placeholder="タイトル" />
-        <div class="template-card-actions">
-          <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
-          <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
-          <button class="template-act template-txt" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントを.txtでダウンロード">ポイント.txt</button>
-          <button class="template-act template-txt" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文を.txtでダウンロード">全文.txt</button>
-          <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">× 削除</button>
-          <button class="template-act template-save" data-id="${escapeHtml(t.id)}" title="現在の内容を保存">💾 保存</button>
-        </div>
-      </div>
-      <div class="template-body-split">
-        <div class="template-body-col">
-          <label class="template-body-label">ポイント</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に"${t.bodyHeight ? ` style="height:${parseInt(t.bodyHeight)}px"` : ''}>${escapeHtml(t.body || "")}</textarea>
-        </div>
-        <div class="template-body-col">
-          <label class="template-body-label">全文</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)"${t.bodyFullHeight ? ` style="height:${parseInt(t.bodyFullHeight)}px"` : ''}>${escapeHtml(t.bodyFull || "")}</textarea>
-        </div>
-      </div>
-    </div>`;
-  bindTemplatesEvents();
-}
-
-// テンプレタブバーの描画
-function renderTemplatesTabBar() {
-  const wrap = $("templates-tab-list");
-  if (!wrap) return;
-  const tabs = templates.map((t, i) => {
-    const isActive = activeTemplateId === t.id;
-    const label = (t.title && t.title.trim()) || "(無題)";
-    return `
-      <div class="template-tab ${isActive ? 'active' : ''}" data-id="${escapeHtml(t.id)}">
-        <span>${escapeHtml(label)}</span>
-        <span class="view-item-actions">
-          ${i > 0 ? `<button class="tab-mini-btn" data-action="left" data-tpl-id="${escapeHtml(t.id)}" title="左へ">◀</button>` : ''}
-          ${i < templates.length - 1 ? `<button class="tab-mini-btn" data-action="right" data-tpl-id="${escapeHtml(t.id)}" title="右へ">▶</button>` : ''}
-        </span>
-      </div>`;
-  }).join("");
-  wrap.innerHTML = tabs;
-  // タブクリック
-  wrap.querySelectorAll(".template-tab").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      if (e.target.closest(".tab-mini-btn")) return;
-      const id = el.dataset.id;
-      if (id === activeTemplateId) return;
-      activeTemplateId = id;
-      renderTemplates();
-    });
-  });
-  // ◀▶ で並び替え
-  wrap.querySelectorAll(".tab-mini-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.tplId;
-      const dir = btn.dataset.action;
-      const i = templates.findIndex((x) => x.id === id);
-      if (i === -1) return;
-      const j = dir === "left" ? i - 1 : i + 1;
-      if (j < 0 || j >= templates.length) return;
-      [templates[i], templates[j]] = [templates[j], templates[i]];
-      saveTemplates();
-      renderTemplatesTabBar();
-    });
-  });
-}
-
-function bindTemplatesEvents() {
-  const wrap = $("templates-list");
-  // タイトル編集(blur保存) → タブのラベルも更新
-  wrap.querySelectorAll(".template-title-input").forEach((inp) => {
-    inp.addEventListener("blur", () => {
-      const t = templates.find((x) => x.id === inp.dataset.id);
-      if (!t) return;
-      if (t.title === inp.value) return;
-      t.title = inp.value;
-      saveTemplates();
-      renderTemplatesTabBar(); // タブのラベルを更新
-    });
-    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-  });
-  // 本文編集(blur保存) - data-fieldで body / bodyFull を切替
-  wrap.querySelectorAll(".template-body-input").forEach((ta) => {
-    ta.addEventListener("blur", () => {
-      const t = templates.find((x) => x.id === ta.dataset.id);
-      if (!t) return;
-      const field = ta.dataset.field;
-      if (t[field] === ta.value) return;
-      t[field] = ta.value;
-      saveTemplates();
-    });
-  });
-  // textareaの高さ変更を検出して保存(ユーザーが右下ハンドルでリサイズ時)
-  // 初期描画直後の発火を無視するため、最初の値を記録してから差分で判定
-  wrap.querySelectorAll(".template-body-input").forEach((ta) => {
-    const t = templates.find((x) => x.id === ta.dataset.id);
-    if (!t) return;
-    const field = ta.dataset.field;
-    const heightField = field === "bodyFull" ? "bodyFullHeight" : "bodyHeight";
-    // 初期高さ(保存値があればそれ、無ければ実測値)
-    let initialHeight = t[heightField] || Math.round(ta.getBoundingClientRect().height);
-    let lastSavedHeight = initialHeight;
-    // デバウンス保存(リサイズ中に大量に発火しないように)
-    let saveTimer = null;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const h = Math.round(entry.contentRect.height);
-        if (Math.abs(h - lastSavedHeight) < 4) continue; // 微小差分は無視
-        lastSavedHeight = h;
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => {
-          const cur = templates.find((x) => x.id === ta.dataset.id);
-          if (!cur) return;
-          if (cur[heightField] === h) return;
-          cur[heightField] = h;
-          saveTemplates();
-        }, 400);
-      }
-    });
-    ro.observe(ta);
-  });
-  // コピー(data-fieldで body / bodyFull を切替)
-  wrap.querySelectorAll(".template-copy").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const t = templates.find((x) => x.id === btn.dataset.id);
-      if (!t) return;
-      const field = btn.dataset.field || "body";
-      const text = t[field] || "";
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          ta.style.position = "fixed"; ta.style.opacity = "0";
-          document.body.appendChild(ta); ta.select();
-          document.execCommand("copy");
-          document.body.removeChild(ta);
-        }
-        const orig = btn.textContent;
-        btn.textContent = "✓";
-        btn.classList.add("copied");
-        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
-      } catch (e) {
-        alert("コピーに失敗しました: " + e.message);
-      }
-    });
-  });
-  // .txt 出力(data-fieldで body / bodyFull を切替)
-  wrap.querySelectorAll(".template-txt").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const t = templates.find((x) => x.id === btn.dataset.id);
-      if (!t) return;
-      const field = btn.dataset.field || "body";
-      const text = t[field] || "";
-      const labelTitle = (t.title && t.title.trim()) || "無題";
-      const labelKind = field === "bodyFull" ? "全文" : "ポイント";
-      const filename = `${safeFileName(labelTitle)}-${labelKind}.txt`;
-      // BOM付きUTF-8でダウンロード(Windowsのメモ帳でも文字化けしない)
-      const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      // ✓ 表示
-      const orig = btn.textContent;
-      btn.textContent = "✓";
-      btn.classList.add("copied");
-      setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
-    });
-  });
-  // 削除(現在のテンプレ)
-  wrap.querySelectorAll(".template-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const t = templates.find((x) => x.id === btn.dataset.id);
-      if (!t) return;
-      const label = (t.title && t.title.trim()) || "(無題)";
-      if (!confirm(`テンプレ「${label}」を削除しますか?`)) return;
-      const i = templates.findIndex((x) => x.id === t.id);
-      templates = templates.filter((x) => x.id !== t.id);
-      // 削除後の選択を妥当な位置に
-      if (templates.length === 0) {
-        activeTemplateId = null;
-      } else {
-        const newIdx = Math.min(i, templates.length - 1);
-        activeTemplateId = templates[newIdx].id;
-      }
-      saveTemplates();
-      renderTemplates();
-    });
-  });
-  // 保存(明示的: blur→即保存→✓表示)
-  wrap.querySelectorAll(".template-save").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (document.activeElement && document.activeElement.blur) {
-        document.activeElement.blur();
-      }
-      const orig = btn.textContent;
-      btn.textContent = "保存中…";
-      btn.disabled = true;
-      const localProducts = products.slice();
-      saveData("Save templates (manual)", () => localProducts)
-        .then(() => {
-          btn.textContent = "✓ 保存済み";
-          setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
-        })
-        .catch((err) => {
-          btn.textContent = orig;
-          btn.disabled = false;
-          alert("保存失敗: " + err.message);
-        });
-    });
-  });
-}
-
-// 新規テンプレを追加(リストの末尾に)
-function addTemplate() {
-  const newT = {
-    id: "tpl-" + genId(),
-    title: "新しいテンプレ",
-    body: "",
-    bodyFull: ""
-  };
-  templates.push(newT);                // 右側(末尾)に追加
-  activeTemplateId = newT.id;          // 追加したものを自動選択
-  saveTemplates();
-  renderTemplates();
-  // タイトル入力欄にフォーカス(全選択状態にして即書き換え可能に)
-  setTimeout(() => {
-    const inp = document.querySelector(`.template-title-input[data-id="${CSS.escape(newT.id)}"]`);
-    if (inp) { inp.focus(); inp.select(); }
-  }, 50);
-}
-
-// テンプレ保存(楽観的更新、バックグラウンド保存)
-function saveTemplates() {
-  const localProducts = products.slice();
-  saveData("Update templates", () => localProducts)
-    .catch((err) => alert("テンプレの保存に失敗: " + err.message));
-}
-
-
-// ==============================================
-// マインドマップ機能 (Prompt Galleryから移植)
-// ==============================================
-
-// ---------- ビュー切り替えバー(ギャラリー/マインドマップ) ----------
-function renderViewBar() {
-  const viewList = $("view-list");
-  // 各マインドマップタブ
-  const mmsHtml = mindmaps.map((m, i) => {
-    const isActive = activeViewId === m.id;
-    return `
-    <div class="view-item ${isActive ? 'active' : ''}" data-view-id="${escapeHtml(m.id)}">
-      <span class="view-item-icon">🗺️</span>
-      <span>${escapeHtml(m.name)}</span>
-      <span class="view-item-actions">
-        ${i > 0 ? `<button class="tab-mini-btn" data-action="left" data-mm-id="${escapeHtml(m.id)}" title="左へ移動">◀</button>` : ''}
-        ${i < mindmaps.length - 1 ? `<button class="tab-mini-btn" data-action="right" data-mm-id="${escapeHtml(m.id)}" title="右へ移動">▶</button>` : ''}
-      </span>
-    </div>
-  `;
-  }).join("");
-  viewList.innerHTML = mmsHtml || '<div class="view-item-empty">工程表未作成 — 右の「+」から追加</div>';
-
-  viewList.querySelectorAll(".view-item").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      if (e.target.closest(".tab-mini-btn")) return;
-      const target = el.dataset.viewId;
-      if (target === activeViewId) return;
-      if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
-      activeViewId = target;
-      selectedNodeId = null;
-      render();
-    });
-  });
-
-  viewList.querySelectorAll(".tab-mini-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const action = btn.dataset.action;
-      const mmId = btn.dataset.mmId;
-      if (action === "left") moveMindmap(mmId, -1);
-      else if (action === "right") moveMindmap(mmId, 1);
-    });
-  });
-}
-
-// マインドマップの並び替え
-async function moveMindmap(mmId, delta) {
-  const idx = mindmaps.findIndex((m) => m.id === mmId);
-  if (idx === -1) return;
-  const newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= mindmaps.length) return;
-  const [item] = mindmaps.splice(idx, 1);
-  mindmaps.splice(newIdx, 0, item);
-  try {
-    await saveData(`Reorder mindmap: ${item.name}`);
-    renderViewBar();
-  } catch (err) {
-    alert("並び替え失敗: " + err.message);
-  }
-}
-
-// ---------- マインドマップ操作 ----------
-function makeNewMindmap() {
-  // マインドマップ表示中で未保存なら確認
-  if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
-  const name = prompt("新しいマインドマップの名前を入力", "新しいマップ");
-  if (!name || !name.trim()) return;
-  const trimmed = name.trim();
-  const newMm = {
-    id: "mm-" + genId(),
-    name: trimmed,
-    root: {
-      id: "n-" + genId(),
-      text: trimmed,
-      children: []
-    }
-  };
-  mindmaps.push(newMm);
-  saveData(`Add mindmap: ${trimmed}`).then(() => {
-    activeViewId = newMm.id;
-    activeTopTab = "xmind";  // 自動で工程表タブに切り替え
-    mmDirty = false;
-    render();
-  }).catch((err) => alert("作成失敗: " + err.message));
-}
-
-function getActiveMindmap() {
-  return mindmaps.find((m) => m.id === activeViewId);
-}
-
-function renderMindmap() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  // 履歴初期化(マップ切り替え時)
-  initMmHistory();
-  $("mindmap-title").textContent = mm.name;
-  // 保存ボタンの状態を反映
-  updateMmSaveButton();
-  const canvas = $("mindmap-canvas");
-  // 初回表示かどうかを判定(マップが切り替わった or 初回)
-  const isFirstRender = canvas.dataset.currentMmId !== mm.id;
-  canvas.dataset.currentMmId = mm.id;
-  // mm-treeコンテナとSVGレイヤーを構築
-  canvas.innerHTML = `
-    <svg class="mm-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="mm-tree">${renderMmNode(mm.root, 0, true)}</div>
-  `;
-  attachMindmapEvents(canvas, mm);
-  // レイアウト確定後にコネクター描画 + 初回ならルートを左中央へ
-  requestAnimationFrame(() => {
-    drawConnectors(mm, canvas);
-    if (isFirstRender) centerRootInCanvas(canvas, mm);
-  });
-}
-
-// ルートノードをキャンバスの「上から0%・左から25%」位置に配置
-function centerRootInCanvas(canvas, mm) {
-  const rootRow = canvas.querySelector(`.mm-node[data-id="${CSS.escape(mm.root.id)}"] > .mm-node-row`);
-  if (!rootRow) return;
-  const canvasRect = canvas.getBoundingClientRect();
-  const rootRect = rootRow.getBoundingClientRect();
-  // ルートの中央座標(canvas相対)
-  const rootCenterX = rootRect.left - canvasRect.left + canvas.scrollLeft + rootRect.width / 2;
-  // 縦は一番上(scrollTop = 0)、横は左25%にルート中央が来るように
-  const targetScrollLeft = rootCenterX - canvas.clientWidth * 0.25;
-  canvas.scrollTo({
-    top: 0,
-    left: Math.max(0, targetScrollLeft),
-    behavior: "auto"
-  });
-}
-
-// ローカル変更を「未保存」扱いにする
-function markMmDirty() {
-  mmDirty = true;
-  updateMmSaveButton();
-}
-
-// ---------- マインドマップ Undo/Redo 履歴 ----------
-// 現在のマインドマップ状態をスナップショット保存
-function pushMmHistory() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  // マップが切り替わったら履歴をリセット
-  if (mmHistoryMapId !== mm.id) {
-    mmHistory = [];
-    mmHistoryIndex = -1;
-    mmHistoryMapId = mm.id;
-  }
-  // redo分があれば破棄
-  if (mmHistoryIndex < mmHistory.length - 1) {
-    mmHistory = mmHistory.slice(0, mmHistoryIndex + 1);
-  }
-  // 深いコピーをスナップショット
-  const snapshot = JSON.stringify({ name: mm.name, root: mm.root });
-  // 直前と同じなら追加しない(連続変更でムダ履歴を防ぐ)
-  if (mmHistory.length > 0 && mmHistory[mmHistory.length - 1] === snapshot) return;
-  mmHistory.push(snapshot);
-  // 上限超えたら古いものを捨てる
-  if (mmHistory.length > MM_HISTORY_LIMIT) {
-    mmHistory.shift();
-  }
-  mmHistoryIndex = mmHistory.length - 1;
-}
-
-// 履歴から復元
-function applyMmHistoryAt(index) {
-  if (index < 0 || index >= mmHistory.length) return;
-  const mm = mindmaps.find((m) => m.id === mmHistoryMapId);
-  if (!mm) return;
-  try {
-    const snap = JSON.parse(mmHistory[index]);
-    mm.name = snap.name;
-    mm.root = snap.root;
-    mmHistoryIndex = index;
-    selectedNodeId = null;
-    multiSelectedIds.clear();
-    markMmDirty();
-    renderViewBar();
-    renderMindmap();
-  } catch (e) {
-    console.error("履歴復元失敗", e);
-  }
-}
-
-function undoMm() {
-  if (mmHistoryIndex > 0) {
-    applyMmHistoryAt(mmHistoryIndex - 1);
-  }
-}
-
-function redoMm() {
-  if (mmHistoryIndex < mmHistory.length - 1) {
-    applyMmHistoryAt(mmHistoryIndex + 1);
-  }
-}
-
-// マインドマップを開いた時、初期スナップショットを保存
-function initMmHistory() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  if (mmHistoryMapId !== mm.id) {
-    mmHistory = [];
-    mmHistoryIndex = -1;
-    mmHistoryMapId = mm.id;
-    // 現状を初期スナップショットとして保存
-    const snapshot = JSON.stringify({ name: mm.name, root: mm.root });
-    mmHistory.push(snapshot);
-    mmHistoryIndex = 0;
-  }
-}
-
-function updateMmSaveButton() {
-  const btn = $("btn-mindmap-save");
-  if (!btn) return;
-  if (mmDirty) {
-    btn.classList.add("btn-primary");
-    btn.classList.remove("tag-mgr-btn");
-    btn.textContent = "💾 保存(未保存あり)";
-    btn.disabled = false;
-  } else {
-    btn.classList.remove("btn-primary");
-    btn.classList.add("tag-mgr-btn");
-    btn.textContent = "💾 保存済み";
-    btn.disabled = true;
-  }
-}
-
-// マインドマップを保存(明示的に押された時のみ)
-async function saveMindmapChanges() {
-  if (!mmDirty) return;
-  const btn = $("btn-mindmap-save");
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "保存中…";
-  try {
-    await saveData(`Update mindmap`);
-    mmDirty = false;
-    updateMmSaveButton();
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-    btn.disabled = false;
-    btn.textContent = original;
-  }
-}
-
-// 「未保存変更あり」状態でビュー切り替え時の確認
-function confirmDiscardMmChanges() {
-  if (!mmDirty) return true;
-  if (confirm("未保存の変更があります。破棄して移動しますか?\n(キャンセルすると現在の画面に留まります)")) {
-    mmDirty = false;
-    return true;
-  }
-  return false;
-}
-
-function renderMmNode(node, depth, isRoot) {
-  const isSelected = selectedNodeId === node.id;
-  const hasChildren = node.children && node.children.length > 0;
-  const isCollapsed = node._collapsed;
-  const toggleIcon = hasChildren
-    ? `<span class="mm-toggle" data-action="toggle" data-id="${node.id}">${isCollapsed ? '+' : '−'}</span>`
-    : '';
-  const levelClass = isRoot ? 'mm-node-root' : `mm-node-l${Math.min(depth, 4)}`;
-  const childrenHtml = hasChildren && !isCollapsed
-    ? `<div class="mm-children">${node.children.map((c) => renderMmNode(c, depth + 1, false)).join("")}</div>`
-    : '';
-
-  return `
-    <div class="mm-node ${levelClass}" data-id="${node.id}" data-depth="${depth}">
-      <div class="mm-node-row ${isSelected ? 'selected' : ''}" data-id="${node.id}" tabindex="0">
-        <span class="mm-node-text" data-id="${node.id}">${escapeHtml(node.text || '(無題)')}</span>
-        ${toggleIcon}
-      </div>
-      ${childrenHtml}
-    </div>
-  `;
-}
-
-// SVGで親 → 子を曲線で繋ぐ
-function drawConnectors(mm, canvas) {
-  const svg = canvas.querySelector(".mm-svg");
-  if (!svg) return;
-  const tree = canvas.querySelector(".mm-tree");
-  if (!tree) return;
-  // canvas相対座標で計算
-  const canvasRect = canvas.getBoundingClientRect();
-  const scrollLeft = canvas.scrollLeft;
-  const scrollTop = canvas.scrollTop;
-  // SVGの実寸を tree のサイズに合わせる
-  const treeRect = tree.getBoundingClientRect();
-  const svgWidth = Math.max(tree.scrollWidth, canvas.clientWidth);
-  const svgHeight = Math.max(tree.scrollHeight, canvas.clientHeight);
-  svg.setAttribute("width", svgWidth);
-  svg.setAttribute("height", svgHeight);
-
-  const paths = [];
-  function walk(node) {
-    if (!node.children || node._collapsed) return;
-    const parentEl = canvas.querySelector(`.mm-node[data-id="${CSS.escape(node.id)}"] > .mm-node-row`);
-    if (!parentEl) return;
-    const pBox = parentEl.getBoundingClientRect();
-    const px = pBox.right - canvasRect.left + scrollLeft;
-    const py = pBox.top + pBox.height / 2 - canvasRect.top + scrollTop;
-    for (const c of node.children) {
-      const childEl = canvas.querySelector(`.mm-node[data-id="${CSS.escape(c.id)}"] > .mm-node-row`);
-      if (!childEl) continue;
-      const cBox = childEl.getBoundingClientRect();
-      const cx = cBox.left - canvasRect.left + scrollLeft;
-      const cy = cBox.top + cBox.height / 2 - canvasRect.top + scrollTop;
-      // 曲線パス:水平に少し進んで、なめらかに垂直方向に曲げる
-      const midX = (px + cx) / 2;
-      paths.push(`M${px},${py} C${midX},${py} ${midX},${cy} ${cx},${cy}`);
-      walk(c);
-    }
-  }
-  walk(mm.root);
-  svg.innerHTML = paths.map((d) => `<path d="${d}"/>`).join("");
-}
-
-// 編集中フラグ
-let editingNodeId = null;
-let multiSelectedIds = new Set(); // ドラッグで複数選択中のノードID
-
-function attachMindmapEvents(canvas, mm) {
-  // 行クリック=選択(複数選択もクリア)
-  canvas.querySelectorAll(".mm-node-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".mm-toggle")) return;
-      // 編集中のテキストclickは無視
-      if (e.target.matches('.mm-node-text[contenteditable="true"]')) return;
-      const id = row.dataset.id;
-      selectedNodeId = id;
-      // 複数選択クリア
-      clearMultiSelection(canvas);
-      // 選択状態の表示更新(再描画は重いので最低限のクラス更新だけ)
-      canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
-      row.classList.add("selected");
-      row.focus();
-    });
-  });
-
-  // テキストダブルクリック=インライン編集開始
-  canvas.querySelectorAll(".mm-node-text").forEach((txt) => {
-    txt.addEventListener("dblclick", (e) => {
-      e.stopPropagation();
-      startInlineEdit(txt.dataset.id);
-    });
-  });
-
-  // 折りたたみ
-  canvas.querySelectorAll(".mm-toggle").forEach((tg) => {
-    tg.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const node = findMmNode(mm.root, tg.dataset.id);
-      if (node) {
-        node._collapsed = !node._collapsed;
-        renderMindmap();
-      }
-    });
-  });
-
-  // 矩形ドラッグ選択(空エリアからのみ開始可能)
-  if (!canvas._mmDragAttached) {
-    canvas._mmDragAttached = true;
-    attachDragSelection(canvas);
-  }
-  // ノードドラッグ&ドロップで並び替え
-  if (!canvas._mmNodeDragAttached) {
-    canvas._mmNodeDragAttached = true;
-    attachNodeDragAndDrop(canvas);
-  }
-
-  // キーボードイベント(canvas全体)
-  canvas.tabIndex = 0;
-  if (!canvas._mmKeydownAttached) {
-    canvas._mmKeydownAttached = true;
-    canvas.addEventListener("keydown", (e) => {
-      if (editingNodeId) return; // インライン編集中はそちらに任せる
-      // 複数選択中の一括削除
-      if (multiSelectedIds.size > 0 && e.key === "Delete") {
-        e.preventDefault();
-        deleteMultiSelected();
-        return;
-      }
-      if (!selectedNodeId) return;
-      const mmCur = getActiveMindmap();
-      if (!mmCur) return;
-      if (e.key === "Enter") {
-        e.preventDefault();
-        addMmSibling(selectedNodeId);
-      } else if (e.key === "Tab") {
-        e.preventDefault();
-        addMmChild(selectedNodeId);
-      } else if (e.key === "F2") {
-        e.preventDefault();
-        startInlineEdit(selectedNodeId);
-      } else if (e.key === "Delete") {
-        e.preventDefault();
-        deleteMmNode(selectedNodeId);
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        moveSelectionTo(mmCur, "right");
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        moveSelectionTo(mmCur, "left");
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        moveSelectionTo(mmCur, "down");
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        moveSelectionTo(mmCur, "up");
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        clearMultiSelection(canvas);
-      }
-    });
-  }
-}
-
-// 複数選択クリア
-function clearMultiSelection(canvas) {
-  if (multiSelectedIds.size === 0) return;
-  multiSelectedIds.clear();
-  canvas.querySelectorAll(".mm-node-row.multi-selected").forEach((r) => r.classList.remove("multi-selected"));
-}
-
-// 矩形ドラッグ選択
-function attachDragSelection(canvas) {
-  let dragStart = null; // {x, y, screenX, screenY}
-  let selectionBox = null;
-  let dragMoved = false;
-
-  const onMouseDown = (e) => {
-    if (e.button !== 0) return; // 左クリックのみ
-    // ノード自身からの開始は無視(ノードクリックを邪魔しない)
-    if (e.target.closest(".mm-node-row") || e.target.closest(".mm-toggle")) return;
-    // 矩形選択ボタン以外(キャンバス背景、SVG、mm-tree、mm-children等)から開始
-    const canvasRect = canvas.getBoundingClientRect();
-    dragStart = {
-      x: e.clientX - canvasRect.left + canvas.scrollLeft,
-      y: e.clientY - canvasRect.top + canvas.scrollTop,
-      clientX: e.clientX,
-      clientY: e.clientY
-    };
-    dragMoved = false;
-    // 既存の複数選択&単一選択をクリア
-    clearMultiSelection(canvas);
-    canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
-    selectedNodeId = null;
-    e.preventDefault();
-  };
-
-  const onMouseMove = (e) => {
-    if (!dragStart) return;
-    const canvasRect = canvas.getBoundingClientRect();
-    const curX = e.clientX - canvasRect.left + canvas.scrollLeft;
-    const curY = e.clientY - canvasRect.top + canvas.scrollTop;
-    const x = Math.min(dragStart.x, curX);
-    const y = Math.min(dragStart.y, curY);
-    const w = Math.abs(curX - dragStart.x);
-    const h = Math.abs(curY - dragStart.y);
-    // 5px以下のドラッグは無視(誤クリック対策)
-    if (w < 5 && h < 5) return;
-    dragMoved = true;
-
-    if (!selectionBox) {
-      selectionBox = document.createElement("div");
-      selectionBox.className = "mm-selection-box";
-      canvas.appendChild(selectionBox);
-    }
-    selectionBox.style.left = x + "px";
-    selectionBox.style.top = y + "px";
-    selectionBox.style.width = w + "px";
-    selectionBox.style.height = h + "px";
-
-    // 範囲内のノードをハイライト
-    const rect = { left: x, top: y, right: x + w, bottom: y + h };
-    canvas.querySelectorAll(".mm-node-row").forEach((row) => {
-      const rBox = row.getBoundingClientRect();
-      const rLeft = rBox.left - canvasRect.left + canvas.scrollLeft;
-      const rTop = rBox.top - canvasRect.top + canvas.scrollTop;
-      const rRight = rLeft + rBox.width;
-      const rBottom = rTop + rBox.height;
-      const intersect = !(rect.right < rLeft || rect.left > rRight || rect.bottom < rTop || rect.top > rBottom);
-      if (intersect) {
-        row.classList.add("multi-selected");
-        multiSelectedIds.add(row.dataset.id);
-      } else {
-        row.classList.remove("multi-selected");
-        multiSelectedIds.delete(row.dataset.id);
-      }
-    });
-  };
-
-  const onMouseUp = (e) => {
-    if (!dragStart) return;
-    dragStart = null;
-    if (selectionBox) {
-      selectionBox.remove();
-      selectionBox = null;
-    }
-    // 選択があったら canvas にフォーカスを戻して Delete キーを受け取れるように
-    if (multiSelectedIds.size > 0) {
-      canvas.focus({ preventScroll: true });
-    }
-    dragMoved = false;
-  };
-
-  // mousedown は canvas で受ける
-  canvas.addEventListener("mousedown", onMouseDown);
-  // mousemove と mouseup は document で受ける(canvas外までドラッグ可能&ノード上もスキャン継続)
-  document.addEventListener("mousemove", onMouseMove);
-  document.addEventListener("mouseup", onMouseUp);
-}
-
-// ---------- ノードのドラッグ&ドロップで並び替え ----------
-function attachNodeDragAndDrop(canvas) {
-  let dragNodeId = null;
-  let dragStartPos = null; // {x, y}
-  let isDragging = false;
-  let ghostEl = null;
-  let lastDropInfo = null; // {targetId, position: 'into'|'before'|'after'}
-
-  const onMouseDown = (e) => {
-    if (e.button !== 0) return;
-    // ノードの上でだけ反応
-    const row = e.target.closest(".mm-node-row");
-    if (!row) return;
-    // ボタン類は無視
-    if (e.target.closest(".mm-node-btn") || e.target.closest(".mm-toggle")) return;
-    // contenteditableな要素(編集中)は無視
-    if (e.target.matches('[contenteditable="true"]')) return;
-    dragNodeId = row.dataset.id;
-    dragStartPos = { x: e.clientX, y: e.clientY };
-    isDragging = false;
-    // ここではpreventDefaultしない:クリック扱いも残したいので
-  };
-
-  const onMouseMove = (e) => {
-    if (!dragNodeId) return;
-    // 開始位置から5px以上動いたらドラッグ開始
-    const dx = e.clientX - dragStartPos.x;
-    const dy = e.clientY - dragStartPos.y;
-    if (!isDragging && Math.hypot(dx, dy) > 5) {
-      // ルートはドラッグ不可
-      const mm = getActiveMindmap();
-      if (mm && dragNodeId === mm.root.id) {
-        dragNodeId = null;
-        return;
-      }
-      isDragging = true;
-      // 編集中はキャンセル
-      if (editingNodeId) {
-        dragNodeId = null;
-        isDragging = false;
-        return;
-      }
-      // 元ノードを薄く
-      const sourceRow = canvas.querySelector(`.mm-node-row[data-id="${CSS.escape(dragNodeId)}"]`);
-      if (sourceRow) sourceRow.classList.add("dragging");
-      // ゴースト作成
-      const node = findMmNode(mm.root, dragNodeId);
-      if (node) {
-        ghostEl = document.createElement("div");
-        ghostEl.className = "mm-drag-ghost";
-        ghostEl.textContent = node.text || "(無題)";
-        document.body.appendChild(ghostEl);
-      }
-      document.body.style.cursor = "grabbing";
-    }
-    if (!isDragging) return;
-
-    // ゴースト位置更新
-    if (ghostEl) {
-      ghostEl.style.left = (e.clientX + 12) + "px";
-      ghostEl.style.top = (e.clientY + 12) + "px";
-    }
-
-    // 直下のターゲットを判定(ゴーストはpointer-events:none)
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    // 前回のハイライトクリア
-    clearDropHints(canvas);
-    if (!target) {
-      lastDropInfo = null;
-      return;
-    }
-    const targetRow = target.closest(".mm-node-row");
-    if (!targetRow || targetRow.dataset.id === dragNodeId) {
-      lastDropInfo = null;
-      return;
-    }
-    const targetId = targetRow.dataset.id;
-    // 自分の子孫の中にはドロップ不可(ループ防止)
-    if (isDescendant(dragNodeId, targetId)) {
-      lastDropInfo = null;
-      return;
-    }
-    // ターゲット行内のどこにマウスがあるかで判定
-    const rBox = targetRow.getBoundingClientRect();
-    const offsetY = e.clientY - rBox.top;
-    const offsetX = e.clientX - rBox.left;
-    let position;
-    const mm = getActiveMindmap();
-    const isRoot = mm && targetId === mm.root.id;
-    if (isRoot) {
-      // ルートは "into"(子追加)しか許可しない
-      position = "into";
-    } else {
-      // 右半分にドロップ → 子追加
-      // 縦的にノードのど真ん中(縦25%~75%)にあれば子追加(重ね判定)
-      // それ以外(左半分かつ縦が上端/下端寄り)→ 兄弟挿入
-      const inRightHalf = offsetX > rBox.width / 2;
-      const inVerticalMiddle = offsetY > rBox.height * 0.25 && offsetY < rBox.height * 0.75;
-      if (inRightHalf || inVerticalMiddle) {
-        position = "into";
-      } else if (offsetY < rBox.height / 2) {
-        position = "before";
-      } else {
-        position = "after";
-      }
-    }
-    if (position === "into") {
-      targetRow.classList.add("drop-target-into");
-    } else if (position === "before") {
-      targetRow.classList.add("drop-target-before");
-    } else {
-      targetRow.classList.add("drop-target-after");
-    }
-    lastDropInfo = { targetId, position };
-  };
-
-  const onMouseUp = (e) => {
-    if (!dragNodeId) return;
-    const wasDragging = isDragging;
-    const sourceId = dragNodeId;
-    const dropInfo = lastDropInfo;
-    // 後片付け
-    dragNodeId = null;
-    dragStartPos = null;
-    isDragging = false;
-    lastDropInfo = null;
-    clearDropHints(canvas);
-    canvas.querySelectorAll(".mm-node-row.dragging").forEach((r) => r.classList.remove("dragging"));
-    if (ghostEl) {
-      ghostEl.remove();
-      ghostEl = null;
-    }
-    document.body.style.cursor = "";
-    if (!wasDragging) return; // 単なるクリックの場合はここで終わり
-    if (!dropInfo) return;
-    // 実行
-    moveMmNodeTo(sourceId, dropInfo.targetId, dropInfo.position);
-  };
-
-  canvas.addEventListener("mousedown", onMouseDown);
-  document.addEventListener("mousemove", onMouseMove);
-  document.addEventListener("mouseup", onMouseUp);
-}
-
-function clearDropHints(canvas) {
-  canvas.querySelectorAll(".drop-target-into, .drop-target-before, .drop-target-after").forEach((el) => {
-    el.classList.remove("drop-target-into", "drop-target-before", "drop-target-after");
-  });
-}
-
-// ノードAがノードBの子孫かどうか(B以下のサブツリーにAが含まれるか)
-function isDescendant(ancestorId, candidateId) {
-  const mm = getActiveMindmap();
-  if (!mm) return false;
-  if (ancestorId === candidateId) return true;
-  const ancestor = findMmNode(mm.root, ancestorId);
-  if (!ancestor) return false;
-  function walk(node) {
-    if (node.id === candidateId) return true;
-    if (!node.children) return false;
-    for (const c of node.children) {
-      if (walk(c)) return true;
-    }
-    return false;
-  }
-  return walk(ancestor);
-}
-
-// ノードを別の場所に移動
-function moveMmNodeTo(sourceId, targetId, position) {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  if (sourceId === targetId) return;
-  const sourceFound = findMmNodeWithParent(mm.root, sourceId);
-  const targetFound = findMmNodeWithParent(mm.root, targetId);
-  if (!sourceFound || !targetFound) return;
-  if (!sourceFound.parent) return; // ルートは動かせない
-  // ループ防止チェック
-  if (isDescendant(sourceId, targetId)) return;
-
-  pushMmHistory();
-
-  // 元の親から外す
-  sourceFound.parent.children = sourceFound.parent.children.filter((c) => c.id !== sourceId);
-  const node = sourceFound.node;
-
-  if (position === "into") {
-    // ターゲットの子として末尾に追加
-    if (!targetFound.node.children) targetFound.node.children = [];
-    targetFound.node.children.push(node);
-    targetFound.node._collapsed = false;
-  } else {
-    // ターゲットの兄弟として、前 or 後
-    const parent = targetFound.parent;
-    if (!parent) return; // ターゲットがルートだった場合は into 扱いになるはずなのでここには来ない
-    const idx = parent.children.findIndex((c) => c.id === targetId);
-    if (idx === -1) return;
-    const insertAt = position === "before" ? idx : idx + 1;
-    parent.children.splice(insertAt, 0, node);
-  }
-
-  markMmDirty();
-  renderMindmap();
-}
-
-// 複数選択ノードの一括削除
-function deleteMultiSelected() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  if (multiSelectedIds.size === 0) return;
-  // ルートを除外
-  const targets = [...multiSelectedIds].filter((id) => id !== mm.root.id);
-  if (targets.length === 0) {
-    alert("ルートノードは削除できません");
-    multiSelectedIds.clear();
-    renderMindmap();
-    return;
-  }
-  pushMmHistory();
-  // 各ノードを親から削除(子孫も自動で消える)
-  for (const id of targets) {
-    const found = findMmNodeWithParent(mm.root, id);
-    if (found && found.parent) {
-      found.parent.children = found.parent.children.filter((c) => c.id !== id);
-    }
-  }
-  multiSelectedIds.clear();
-  selectedNodeId = null;
-  markMmDirty();
-  renderMindmap();
-}
-
-// 矢印キーでノード選択を移動
-function moveSelectionTo(mm, direction) {
-  const current = findMmNodeWithParent(mm.root, selectedNodeId);
-  if (!current) return;
-  const node = current.node;
-  const parent = current.parent;
-  let nextId = null;
-
-  if (direction === "right") {
-    // 右:子の先頭へ。折りたたみ中なら開く
-    if (node.children && node.children.length > 0) {
-      if (node._collapsed) {
-        node._collapsed = false;
-        renderMindmap();
-      }
-      nextId = node.children[0].id;
-    }
-  } else if (direction === "left") {
-    // 左:親へ。ルートなら何もしない
-    if (parent) nextId = parent.id;
-  } else if (direction === "down") {
-    // 下:同階層の次の兄弟へ。なければ次の上位の兄弟探索
-    if (parent) {
-      const idx = parent.children.findIndex((c) => c.id === node.id);
-      if (idx >= 0 && idx < parent.children.length - 1) {
-        nextId = parent.children[idx + 1].id;
-      } else {
-        // 兄弟が無い → 親の次の兄弟を探す(上方向に遡る)
-        let cur = parent;
-        let curParent = findMmNodeWithParent(mm.root, parent.id)?.parent;
-        while (curParent) {
-          const ci = curParent.children.findIndex((c) => c.id === cur.id);
-          if (ci < curParent.children.length - 1) {
-            nextId = curParent.children[ci + 1].id;
-            break;
-          }
-          cur = curParent;
-          curParent = findMmNodeWithParent(mm.root, curParent.id)?.parent;
-        }
-      }
-    }
-  } else if (direction === "up") {
-    // 上:同階層の前の兄弟へ。前の兄弟の末尾の子孫がいればそこへ
-    if (parent) {
-      const idx = parent.children.findIndex((c) => c.id === node.id);
-      if (idx > 0) {
-        // 前の兄弟の最後の表示中の子孫
-        let target = parent.children[idx - 1];
-        while (target.children && target.children.length > 0 && !target._collapsed) {
-          target = target.children[target.children.length - 1];
-        }
-        nextId = target.id;
-      } else {
-        // 前の兄弟がない → 親へ
-        nextId = parent.id;
-      }
-    }
-  }
-
-  if (nextId && nextId !== selectedNodeId) {
-    selectedNodeId = nextId;
-    // 軽量更新:再描画せず、クラス付替えだけ
-    const canvas = $("mindmap-canvas");
-    canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
-    const newRow = canvas.querySelector(`.mm-node-row[data-id="${CSS.escape(nextId)}"]`);
-    if (newRow) {
-      newRow.classList.add("selected");
-      newRow.focus({ preventScroll: false });
-      // 画面外なら可視範囲にスクロール
-      newRow.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-    }
-  }
-}
-
-// 兄弟ノード追加(Enter) - ローカル更新のみ、保存は明示ボタンで
-function addMmSibling(nodeId) {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  const found = findMmNodeWithParent(mm.root, nodeId);
-  if (!found || !found.parent) {
-    // ルートには兄弟を作れない → 代わりに子を作る
-    addMmChild(nodeId);
-    return;
-  }
-  pushMmHistory();
-  const newNode = { id: "n-" + genId(), text: "新ノード", children: [] };
-  const idx = found.parent.children.findIndex((c) => c.id === nodeId);
-  found.parent.children.splice(idx + 1, 0, newNode);
-  selectedNodeId = newNode.id;
-  markMmDirty();
-  renderMindmap();
-  // 追加後すぐに編集モード(同期的に呼ぶ → 描画完了を待つだけ)
-  requestAnimationFrame(() => startInlineEdit(newNode.id));
-}
-
-// インライン編集(contenteditableで)
-function startInlineEdit(nodeId) {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  const node = findMmNode(mm.root, nodeId);
-  if (!node) return;
-  const txt = document.querySelector(`.mm-node-text[data-id="${CSS.escape(nodeId)}"]`);
-  if (!txt) return;
-  editingNodeId = nodeId;
-  txt.setAttribute("contenteditable", "true");
-  txt.focus();
-  // 全選択
-  const range = document.createRange();
-  range.selectNodeContents(txt);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-
-  const oldText = node.text || "";
-  const commit = (cancel, nextAction) => {
-    if (editingNodeId !== nodeId) return;
-    editingNodeId = null;
-    txt.removeAttribute("contenteditable");
-    const newText = (cancel ? oldText : txt.textContent.trim()) || oldText;
-    txt.textContent = newText;
-    if (!cancel && newText !== oldText) {
-      pushMmHistory();
-      node.text = newText;
-      if (node.id === mm.root.id) mm.name = newText;
-      markMmDirty();
-      // ビューバー(マップ名表示)も更新する必要がある場合のみrenderViewBar
-      if (node.id === mm.root.id) renderViewBar();
-      // タイトル表示を更新
-      $("mindmap-title").textContent = mm.name;
-    }
-    // 編集を確定したら、選択ノードの行にフォーカスを戻す(キーボード操作を継続できるように)
-    const row = $("mindmap-canvas").querySelector(`.mm-node-row[data-id="${CSS.escape(nodeId)}"]`);
-    if (row) {
-      // すべての選択クラスをクリアして、このノードを選択中にする
-      $("mindmap-canvas").querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
-      row.classList.add("selected");
-      selectedNodeId = nodeId;
-      row.focus({ preventScroll: true });
-    }
-    // 次のアクション:兄弟 or 子ノード追加 → 連続入力可能に
-    if (nextAction === "sibling") {
-      // ルートに兄弟は作れない → 子にフォールバック
-      requestAnimationFrame(() => addMmSibling(nodeId));
-    } else if (nextAction === "child") {
-      requestAnimationFrame(() => addMmChild(nodeId));
-    } else {
-      // 通常確定:コネクター再描画(テキスト幅が変わった可能性)
-      requestAnimationFrame(() => drawConnectors(mm, $("mindmap-canvas")));
-    }
-  };
-  txt.addEventListener("blur", () => commit(false, null), { once: true });
-  txt.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      // 編集を確定のみ(兄弟追加はしない)
-      commit(false, null);
-    } else if (e.key === "Tab") {
-      e.preventDefault();
-      // 編集を確定のみ(子追加はしない)
-      commit(false, null);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      commit(true, null);
-    }
-    e.stopPropagation();
-  });
-}
-
-function findMmNode(node, id, parent) {
-  if (node.id === id) return node;
-  for (const c of node.children || []) {
-    const found = findMmNode(c, id, node);
-    if (found) return found;
-  }
-  return null;
-}
-function findMmNodeWithParent(node, id, parent) {
-  if (node.id === id) return { node, parent };
-  for (const c of node.children || []) {
-    const found = findMmNodeWithParent(c, id, node);
-    if (found) return found;
-  }
-  return null;
-}
-
-function addMmChild(parentId) {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  const parent = findMmNode(mm.root, parentId);
-  if (!parent) return;
-  pushMmHistory();
-  if (!parent.children) parent.children = [];
-  const newNode = { id: "n-" + genId(), text: "新ノード", children: [] };
-  parent.children.push(newNode);
-  parent._collapsed = false;
-  selectedNodeId = newNode.id;
-  markMmDirty();
-  renderMindmap();
-  // 追加後すぐにインライン編集モード
-  requestAnimationFrame(() => startInlineEdit(newNode.id));
-}
-
-function deleteMmNode(nodeId) {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  const found = findMmNodeWithParent(mm.root, nodeId);
-  if (!found || !found.parent) return; // ルートは削除不可
-  pushMmHistory();
-  found.parent.children = found.parent.children.filter((c) => c.id !== nodeId);
-  selectedNodeId = null;
-  markMmDirty();
-  renderMindmap();
-}
-
-function renameMindmap() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  const name = prompt("マインドマップの名前を入力", mm.name);
-  if (!name || !name.trim() || name.trim() === mm.name) return;
-  const trimmed = name.trim();
-  mm.name = trimmed;
-  // ルートテキストも同期
-  if (mm.root) mm.root.text = trimmed;
-  markMmDirty();
-  render();
-}
-
-async function deleteMindmap() {
-  const mm = getActiveMindmap();
-  if (!mm) return;
-  if (!confirm(`マインドマップ「${mm.name}」を削除しますか?\n(中のノードもすべて削除されます)`)) return;
-  mindmaps = mindmaps.filter((m) => m.id !== mm.id);
-  // 削除は即保存(他に未保存があってもまとめて保存される)
-  try {
-    await saveData(`Delete mindmap: ${mm.name}`);
-    mmDirty = false;
-    activeViewId = "_main";
-    render();
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-
-
-// 1行表示時のページ送りボタン(1-15 / 16-30 …)。全商品で最大の画像枚数からページ数を決める。
-function renderGalleryPager(sortedProducts) {
-  const pager = $("gallery-pager");
-  if (!pager) return;
-  // 全体表示モードではページング不要
-  if (galleryWrap) {
-    pager.style.display = "none";
-    pager.innerHTML = "";
-    return;
-  }
-  // 全商品の中で最大の画像枚数
-  let maxImgs = 0;
-  sortedProducts.forEach((p) => {
-    const n = collectAllImages(p, galleryViewMode).length;
-    if (n > maxImgs) maxImgs = n;
-  });
-  // 15枚以下ならページ送り不要(全部1ページに収まる)
-  if (maxImgs <= GALLERY_PAGE_SIZE) {
-    pager.style.display = "none";
-    pager.innerHTML = "";
-    galleryPage = 0;
-    return;
-  }
-  const pageCount = Math.ceil(maxImgs / GALLERY_PAGE_SIZE);
-  // 現在ページが範囲外なら補正
-  if (galleryPage >= pageCount) galleryPage = pageCount - 1;
-  let html = '<span class="pager-label">表示:</span>';
-  for (let i = 0; i < pageCount; i++) {
-    const from = i * GALLERY_PAGE_SIZE + 1;
-    const to = Math.min((i + 1) * GALLERY_PAGE_SIZE, maxImgs);
-    const active = i === galleryPage ? " active" : "";
-    html += `<button class="pager-btn${active}" data-page="${i}">${from}-${to}</button>`;
-  }
-  pager.innerHTML = html;
-  pager.style.display = "flex";
-  pager.querySelectorAll(".pager-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      galleryPage = parseInt(btn.dataset.page);
-      render();
-    });
-  });
-}
-
-// 画像一覧表示(1商品=横一列で全画像、縦長サムネ固定)
-function renderGalleryView() {
-  const gallery = $("gallery");
-  gallery.className = "gallery-rows thumb-tall" + (galleryWrap ? " gallery-wrap" : "");
-  // タグフィルタを適用("_all"なら全件)
-  const baseList = activeTagFilter === "_all"
-    ? products
-    : products.filter((p) => Array.isArray(p.tags) && p.tags.includes(activeTagFilter));
-  const sorted = baseList.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-
-  // ページャ更新(1行モードのみ)。全商品で最大の画像枚数を基準にページ数を決める。
-  renderGalleryPager(sorted);
-  // 1行モードでページングする場合の表示範囲
-  const usePaging = !galleryWrap;
-  const start = galleryPage * GALLERY_PAGE_SIZE;
-  const end = start + GALLERY_PAGE_SIZE;
-
-  // フィルタの結果0件
-  if (sorted.length === 0) {
-    gallery.innerHTML = `<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">🔍</div><p>「${escapeHtml(activeTagFilter)}」のタグが付いた商品はありません。</p></div>`;
-    return;
-  }
-
-  gallery.innerHTML = sorted.map((p) => {
-    const allImgs = collectAllImages(p, galleryViewMode);
-    // 1行モード: 該当ページの15枚だけ。全体表示モード: 全部。
-    const imgs = usePaging ? allImgs.slice(start, end) : allImgs;
-    const isChecked = galleryViewMode === "checked";
-    const thumbsHtml = imgs.length
-      ? imgs.map((path, i) => {
-          const imgTag = `<img class="row-thumb" data-load-path="${escapeHtml(path)}" alt="" loading="lazy" />`;
-          if (!isChecked) return imgTag;
-          // checkedモード: サムネ下に←→ボタンで左右並び替え
-          const arrows = `<div class="row-thumb-arrows">
-              <button class="row-thumb-arrow" data-pid="${escapeHtml(p.id)}" data-path="${escapeHtml(path)}" data-dir="left" title="左へ" ${i === 0 ? "disabled" : ""}>←</button>
-              <button class="row-thumb-arrow" data-pid="${escapeHtml(p.id)}" data-path="${escapeHtml(path)}" data-dir="right" title="右へ" ${i === imgs.length - 1 ? "disabled" : ""}>→</button>
-            </div>`;
-          return `<div class="row-thumb-wrap">${imgTag}${arrows}</div>`;
-        }).join("")
-      : '<span class="row-noimg">画像なし</span>';
-    const tags = Array.isArray(p.tags) ? p.tags : [];
-    // tagGroups からタグの定義を引いて、グループ別に振り分け
-    const findTag = (name) => {
-      for (const g of (tagGroups || [])) {
-        for (const t of (g.tags || [])) {
-          if (t.name === name) return { ...t, groupId: g.id };
-        }
-      }
-      return null;
-    };
-    // グループ別のタグを順序付きで取り出す(タグ定義の順序を維持)
-    const byGroup = new Map();
-    for (const g of (tagGroups || [])) {
-      const ts = (g.tags || []).filter((t) => tags.includes(t.name));
-      if (ts.length) byGroup.set(g.id, ts);
-    }
-    const tagPill = (t) => `<span class="row-tag" data-tag="${escapeHtml(t.name)}" style="background:${escapeHtml(t.color || "#888")};color:#fff;">${escapeHtml(t.name)}</span>`;
-    const tagsHtml = byGroup.size
-      ? `<div class="row-tags">${Array.from(byGroup.values()).map((arr) =>
-          `<div class="row-tag-group">${arr.map(tagPill).join("")}</div>`
-        ).join("")}</div>`
-      : "";
-    return `
-    <div class="gallery-row" data-id="${escapeHtml(p.id)}">
-      <div class="row-info">
-        <div class="row-start-date">${escapeHtml(p.startDate || "—")}</div>
-        <div class="row-name">${escapeHtml(p.name || "無題")}</div>
-        ${tagsHtml}
-        <button class="row-open-btn" data-id="${escapeHtml(p.id)}">編集 ›</button>
-      </div>
-      <div class="row-thumbs">${thumbsHtml}</div>
-    </div>`;
-  }).join("");
-
-  // サムネ読み込み + クリックで拡大(前後送りは「その行のまとまり」内だけ)
-  gallery.querySelectorAll(".gallery-row").forEach((row) => {
-    const thumbs = Array.from(row.querySelectorAll(".row-thumb[data-load-path]"));
-    // この行のsrcを共有配列にして、各サムネが読み込まれたら同じ配列が更新される
-    const srcs = new Array(thumbs.length).fill("");
-    thumbs.forEach((img, i) => {
-      fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
-        if (url) img.src = url;
-        srcs[i] = url || "";
-        img.removeAttribute("data-loading");
-      });
-      img.dataset.loading = "1";
-      img.addEventListener("click", (e) => {
-        e.stopPropagation(); // 画像クリックは拡大のみ(行クリックの編集遷移を抑止)
-        // クリック時点で読み込み済みのsrcを使ってまとまりを構成
-        const list = thumbs.map((t, j) => t.src || srcs[j]).filter(Boolean);
-        // クリックしたサムネが list 内で何番目かを求める
-        const clickedSrc = img.src || srcs[i];
-        let idx = list.indexOf(clickedSrc);
-        if (idx === -1) idx = 0;
-        showLightbox(list, idx);
-      });
-    });
-    // 行の何もないところをクリックしても編集画面へ(画像・編集ボタンは個別処理が優先)
-    row.style.cursor = "pointer";
-    row.addEventListener("click", () => openDetail(row.dataset.id));
-    // checkedモードの ←→ ボタン: 左右並び替え。行クリックに伝播させない。
-    row.querySelectorAll(".row-thumb-arrow").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        moveFinalThumb(btn.dataset.pid, btn.dataset.path, btn.dataset.dir);
-      });
-    });
-  });
-  // 「編集」ボタンで編集ページへ
-  gallery.querySelectorAll(".row-open-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openDetail(btn.dataset.id);
-    });
-  });
-}
-
-// 表示モードボタン(3択ラジオ): 素材を表示中 / 素材を除外中 / 完成品を表示中
-function updateViewModeBtns() {
-  const map = { "show": "view-mode-show", "hide": "view-mode-hide", "checked": "view-mode-checked" };
-  const labels = { "show": "素材を表示中", "hide": "素材を除外中", "checked": "完成品を表示中" };
-  for (const mode of Object.keys(map)) {
-    const btn = $(map[mode]);
-    if (!btn) continue;
-    btn.innerHTML = `<span class="btn-2line-main">${labels[mode]}</span>`;
-    btn.classList.toggle("active", galleryViewMode === mode);
-  }
-}
-
-// モード切替(必ずどれか1つが選ばれる)
-function setViewMode(mode) {
-  if (mode !== "show" && mode !== "hide" && mode !== "checked") return;
-  if (galleryViewMode === mode) return;
-  galleryViewMode = mode;
-  try { localStorage.setItem("imageFlow.galleryViewMode", mode); } catch {}
-  updateViewModeBtns();
-  render();
-}
-
-// 行表示ボタンの表示更新
-function updateWrapBtn() {
-  const wb = $("btn-wrap-toggle");
-  if (wb) {
-    // 上段=現在の状態、下段=小さい字で「→切り替え」案内
-    const state = galleryWrap ? "全体表示中" : "1行表示中";
-    wb.innerHTML = `<span class="btn-2line-main">${state}</span><span class="btn-2line-sub">→切り替え</span>`;
-    wb.classList.toggle("active", galleryWrap);
-  }
-}
-
-// 1行(横スクロール) ⇔ 複数行(折り返し全体表示) の切り替え
-function toggleGalleryWrap() {
-  galleryWrap = !galleryWrap;
-  try { localStorage.setItem("imageFlow.galleryWrap", galleryWrap ? "1" : "0"); } catch {}
-  updateWrapBtn();
-  render();
-}
-
-// ---------- 商品詳細 ----------
-function closeAllModals() {
-  ["add-modal", "detail-modal", "text-fullscreen", "storage-modal", "settings-modal", "tag-settings-modal"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-  // ライトボックスは状態リセットも伴うので専用関数で閉じる
-  if (typeof closeLightbox === "function") closeLightbox();
-}
-
-function openDetail(id) {
-  const p = products.find((x) => x.id === id);
-  if (!p) return;
-  closeAllModals();
-  currentDetailId = id;
-
-  // モーダルは先に開く(途中でエラーが出ても開いた状態は保つ)
-  $("detail-modal").style.display = "flex";
-
-  try {
-    // 商品画像
-    if (p.image) {
-      $("detail-img").style.display = "";
-      $("detail-noimg").style.display = "none";
-      $("editor-img-remove").style.display = "";
-      $("detail-img").src = "";
-      loadImageInto($("detail-img"), p.image);
-    } else {
-      $("detail-img").style.display = "none";
-      $("detail-noimg").style.display = "flex";
-      $("editor-img-remove").style.display = "none";
-    }
-
-    // 商品情報(インライン編集の初期値)
-    $("edit-start-date").value = p.startDate || "";
-    $("edit-product-name").value = p.name || "";
-    // タグの選択状態を反映
-    updateTagButtons(p);
-    const hs = $("editor-head-status");
-    if (hs) { hs.textContent = ""; hs.className = "save-status"; }
-
-    // セクション描画
-    renderSections(p);
-  } catch (err) {
-    console.error("openDetailでエラー(モーダルは開いたまま継続):", err);
-  }
-}
-
-// ---------- セクション描画 ----------
-function renderSections(p) {
-  const wrap = $("editor-sections");
-  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
-
-  const sectionsHtml = p.sectionItems.map((item, secIdx) => {
-    const def = sectionDefs.find((d) => d.key === item.key);
-    // 表示名: item.label優先 → 雛形def.label → どちらも無ければ空(プレースホルダ表示)
-    const rawLabel = (item.label !== undefined && item.label !== null && item.label !== "")
-      ? item.label
-      : (def ? def.label : "");
-    const label = rawLabel;
-    const labelIsEmpty = (rawLabel === "");
-
-    // 画像・ファイルのアイテムHTMLを生成(side: material / final)
-    const imgItemHtml = (path, i, side) => {
-      // 完成品のみチェックボックスを表示(チェックすると「完成品を表示中」モードで表示対象)
-      const checked = side === "final" && Array.isArray(item.imagesFinalChecked) && item.imagesFinalChecked.includes(path);
-      const checkHtml = side === "final"
-        ? `<label class="sec-img-check" title="チェックすると「完成品を表示中」モードで表示されます"><input type="checkbox" class="sec-img-check-input" data-iid="${escapeHtml(item.iid)}" data-path="${escapeHtml(path)}" ${checked ? "checked" : ""} /></label>`
-        : "";
-      return `
-      <div class="sec-img-item${side === "final" && checked ? " checked" : ""}">
-        <img data-load-path="${escapeHtml(path)}" alt="" />
-        ${checkHtml}
-        <button class="sec-swap" data-iid="${escapeHtml(item.iid)}" data-kind="img" data-side="${side}" data-idx="${i}" title="反対側へ移動">⇔</button>
-        <button class="sec-img-remove" data-iid="${escapeHtml(item.iid)}" data-side="${side}" data-idx="${i}" title="削除">×</button>
-      </div>`;
-    };
-    const fileItemHtml = (f, i, side) => `
-      <div class="sec-file-item">
-        <a class="sec-file-link" data-load-file="${escapeHtml(f.path)}" data-name="${escapeHtml(f.name)}" href="#" download="${escapeHtml(f.name)}">📄 <span>${escapeHtml(f.name)}</span></a>
-        <button class="sec-swap" data-iid="${escapeHtml(item.iid)}" data-kind="file" data-side="${side}" data-idx="${i}" title="反対側へ移動">⇔</button>
-        <button class="sec-file-remove" data-iid="${escapeHtml(item.iid)}" data-side="${side}" data-idx="${i}" title="削除">×</button>
-      </div>`;
-
-    const materialContent = (item.images || []).map((p2, i) => imgItemHtml(p2, i, "material")).join("")
-      + (item.files || []).map((f, i) => fileItemHtml(f, i, "material")).join("");
-    const finalContent = (item.imagesFinal || []).map((p2, i) => imgItemHtml(p2, i, "final")).join("")
-      + (item.filesFinal || []).map((f, i) => fileItemHtml(f, i, "final")).join("");
-    // 各サイドに「画像」が入っているかで判定(ファイルチップは無視)。
-    // 画像が無ければ横長の薄いバー、1枚でもあれば正方形の追加口。
-    const materialEmpty = (item.images || []).length === 0;
-    const finalEmpty = (item.imagesFinal || []).length === 0;
-
-    // テキスト1件分のHTML(pos: top/bottom)
-    // 1行のinputでその場編集。長文は横にはみ出さず途中まで表示。
-    // 「編集」ボタンで全画面エディタ(大きい画面)を開ける。
-    const textItemHtml = (t, i, pos) => {
-      const val = (t !== undefined && t !== null) ? escapeHtml(String(t)) : "";
-      const txtLabel = pos === "bottom" ? "回答文.txt" : "入力文.txt";
-      const txtTitle = pos === "bottom" ? "この回答文を.txtでダウンロード" : "この入力文を.txtでダウンロード";
-      return `
-      <div class="sec-text-item">
-        <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
-        <div class="sec-text-btns">
-          <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
-          <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
-          <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="${txtTitle}">${txtLabel}</button>
-          <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
-        </div>
-      </div>`;
-    };
-    // テキストブロック(pos: top/bottom)。既存テキストのみ表示(追加ボタンなし)
-    const textsBlockHtml = (pos) => {
-      const arr = item[textArrName(pos)] || [];
-      const items = arr.map((t, i) => textItemHtml(t, i, pos)).join("");
-      return `
-      <div class="sec-texts" data-pos="${pos}">
-        ${items}
-      </div>`;
-    };
-
-    return `
-    <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
-      <div class="editor-section-content">
-        ${textsBlockHtml("top")}
-        <div class="sec-dual">
-          <div class="sec-side">
-            <div class="sec-side-label sec-side-label-row">
-              <span>素材</span>
-              <span class="sec-side-label-btns">
-                <button class="sec-use-topall" data-iid="${escapeHtml(item.iid)}" title="「all 当画像以前の画像を使用」のプレースホルダを素材に追加">当画像以前の画像を使用</button>
-                <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
-              <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
-            </span>
-          </div>
-          <div class="sec-images">
-            ${materialContent}
-            <div class="sec-dropzone${materialEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="material" title="クリックまたはドラッグ&ドロップでアップロード">
-              <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">画像を<br>アップロード</span>
-            </div>
-            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="material" />
-          </div>
-        </div>
-        <div class="sec-side">
-          <div class="sec-side-label">完成品</div>
-          <div class="sec-images">
-            ${finalContent}
-            <div class="sec-dropzone${finalEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="final" title="クリックまたはドラッグ&ドロップでアップロード">
-              <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">画像を<br>アップロード</span>
-            </div>
-            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="final" />
-          </div>
-        </div>
-      </div>
-      ${textsBlockHtml("bottom")}
-      </div>
-      <div class="editor-section-side">
-        <button class="sec-remove-item" data-iid="${escapeHtml(item.iid)}" title="この項目を削除">×</button>
-        <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="up" title="上へ移動" ${secIdx === 0 ? "disabled" : ""}>↑</button>
-        <button class="sec-move" data-iid="${escapeHtml(item.iid)}" data-dir="down" title="下へ移動" ${secIdx === p.sectionItems.length - 1 ? "disabled" : ""}>↓</button>
-      </div>
-    </div>`;
-  }).join("");
-
-  // 末尾に「+ 項目を追加」ボタン(押すと空白項目を1つ追加)
-  const addAreaHtml = `
-    <div class="sec-add-item-area">
-      <button id="sec-add-item-btn" class="sec-add-item-btn">＋ 項目を追加</button>
-    </div>`;
-
-  wrap.innerHTML = sectionsHtml + addAreaHtml;
-
-  // 画像読み込み + クリックで拡大(前後送りは「その項目の素材+完成品のまとまり」内だけ)
-  wrap.querySelectorAll(".editor-section").forEach((section) => {
-    const imgs = Array.from(section.querySelectorAll("img[data-load-path]"));
-    const srcs = new Array(imgs.length).fill("");
-    imgs.forEach((img, i) => {
-      img.dataset.loading = "1";
-      fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
-        if (url) img.src = url;
-        srcs[i] = url || "";
-        img.removeAttribute("data-loading");
-      });
-      img.addEventListener("click", () => {
-        const list = imgs.map((t, j) => t.src || srcs[j]).filter(Boolean);
-        const clickedSrc = img.src || srcs[i];
-        let idx = list.indexOf(clickedSrc);
-        if (idx === -1) idx = 0;
-        showLightbox(list, idx);
-      });
-    });
-  });
-  // ファイルのダウンロードリンク読み込み
-  wrap.querySelectorAll(".sec-file-link[data-load-file]").forEach((a) => {
-    fetchAsBlobUrl(a.dataset.loadFile, false, true).then((url) => {
-      if (url) { a.href = url; a.download = a.dataset.name || "file"; }
-    });
-  });
-  // ファイル削除
-  wrap.querySelectorAll(".sec-file-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionFile(btn.dataset.iid, btn.dataset.side, parseInt(btn.dataset.idx)));
-  });
-  // 「右上の完成品を使用」プレースホルダを素材に追加
-  wrap.querySelectorAll(".sec-use-final").forEach((btn) => {
-    btn.addEventListener("click", () => addFinalPlaceholder(btn.dataset.iid));
-  });
-  // 「上部の情報を使用」プレースホルダを素材に追加
-  wrap.querySelectorAll(".sec-use-top").forEach((btn) => {
-    btn.addEventListener("click", () => addTopPlaceholder(btn.dataset.iid));
-  });
-  // 「当画像以前の画像を使用」プレースホルダを素材に追加
-  wrap.querySelectorAll(".sec-use-topall").forEach((btn) => {
-    btn.addEventListener("click", () => addTopAllPlaceholder(btn.dataset.iid));
-  });
-  // ドロップゾーン(side別): クリックでファイル選択 / ドラッグ&ドロップ
-  wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
-    const iid = dz.dataset.iid;
-    const side = dz.dataset.side;
-    // クリックで同じside の hidden file input を開く
-    dz.addEventListener("click", () => {
-      const input = wrap.querySelector(`.sec-file-input[data-iid="${CSS.escape(iid)}"][data-side="${side}"]`);
-      if (input) input.click();
-    });
-    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
-    dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-    dz.addEventListener("drop", (e) => {
-      e.preventDefault();
-      dz.classList.remove("drag");
-      if (e.dataTransfer.files && e.dataTransfer.files.length) {
-        addSectionImages(iid, side, e.dataTransfer.files);
-      }
-    });
-  });
-  // ファイル選択(input change)でアップロード
-  wrap.querySelectorAll(".sec-file-input").forEach((input) => {
-    input.addEventListener("change", (e) => {
-      if (e.target.files && e.target.files.length) {
-        addSectionImages(input.dataset.iid, input.dataset.side, e.target.files);
-      }
-      e.target.value = ""; // 同じファイルを連続選択できるようリセット
-    });
-  });
-  // 画像削除
-  wrap.querySelectorAll(".sec-img-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionImage(btn.dataset.iid, btn.dataset.side, parseInt(btn.dataset.idx)));
-  });
-  // 画像/ファイルを反対側へ移動(⇔)
-  wrap.querySelectorAll(".sec-swap").forEach((btn) => {
-    btn.addEventListener("click", () => swapSide(btn.dataset.iid, btn.dataset.kind, btn.dataset.side, parseInt(btn.dataset.idx)));
-  });
-  // 完成品チェックボックス: チェック/外す → imagesFinalChecked に反映 + 保存
-  wrap.querySelectorAll(".sec-img-check-input").forEach((cb) => {
-    cb.addEventListener("change", () => toggleFinalChecked(cb.dataset.iid, cb.dataset.path, cb.checked));
-    // チェックボックスクリックがライトボックス起動に伝播しないように
-    cb.addEventListener("click", (e) => e.stopPropagation());
-  });
-  // テキスト削除
-  wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
-  });
-  // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
-  wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
-    inp.addEventListener("blur", () => {
-      // paste直後はblur保存をスキップ(改行込みの保存内容を1行値で上書きしないため)
-      if (inp.dataset.pasteSkipBlur === "1") {
-        inp.dataset.pasteSkipBlur = "";
-        return;
-      }
-      commitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), inp.value);
-    });
-    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
-    // 貼り付け(paste)時: 改行を含むテキストはinputに入れず直接データへ保存。
-    // ChatGPT等からコピペ時に改行が消えるのを防ぐ。
-    inp.addEventListener("paste", (e) => {
-      const cd = e.clipboardData || window.clipboardData;
-      if (!cd) return;
-      const pasted = cd.getData("text/plain");
-      if (pasted === undefined || pasted === null) return;
-      // 改行を含む場合だけ特別扱い(改行なしなら通常のpaste挙動でOK)
-      if (!/\r|\n/.test(pasted)) return;
-      e.preventDefault();
-      // inputには表示用に1行化(改行→空白)した先頭を入れ、データには改行込みで保存
-      const oneLine = pasted.replace(/\s*\r?\n\s*/g, " ").trim();
-      inp.value = oneLine;
-      inp.dataset.pasteSkipBlur = "1";  // 直後のblurで1行値に上書きされるのを防ぐ
-      pasteCommitSectionText(inp.dataset.iid, inp.dataset.pos, parseInt(inp.dataset.idx), pasted);
-    });
-  });
-  // 「編集」ボタンで大きい画面(全画面エディタ)を開く
-  wrap.querySelectorAll(".sec-text-edit").forEach((btn) => {
-    btn.addEventListener("click", () => openTextFullscreen(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
-  });
-  // 「コピー」ボタンで中身をクリップボードへ
-  wrap.querySelectorAll(".sec-text-copy").forEach((btn) => {
-    btn.addEventListener("click", () => copySectionText(btn));
-  });
-  // 「.txt」ボタンで文章をテキストファイルとしてダウンロード
-  wrap.querySelectorAll(".sec-text-txt").forEach((btn) => {
-    btn.addEventListener("click", () => downloadSectionText(btn));
-  });
-  // 項目ごと削除
-  wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
-    btn.addEventListener("click", () => removeSectionItem(btn.dataset.iid));
-  });
-  // 項目の上下移動
-  wrap.querySelectorAll(".sec-move").forEach((btn) => {
-    btn.addEventListener("click", () => moveSectionItem(btn.dataset.iid, btn.dataset.dir === "up" ? -1 : 1));
-  });
-  // +項目を追加(空白の新規項目を1つ追加)
-  $("sec-add-item-btn").addEventListener("click", addBlankSectionItem);
-}
-
-// 項目を上下に移動
-async function moveSectionItem(iid, delta) {
-  const p = getCurrentProduct();
-  if (!p || !Array.isArray(p.sectionItems)) return;
-  const idx = p.sectionItems.findIndex((it) => it.iid === iid);
-  if (idx === -1) return;
-  const newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= p.sectionItems.length) return;
-  const [item] = p.sectionItems.splice(idx, 1);
-  p.sectionItems.splice(newIdx, 0, item);
-  renderSections(p); // 先に画面反映(待たせない)
-  try {
-    await saveData(`Reorder section: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("並べ替えの保存に失敗: " + err.message);
-  }
-}
-
-// 空白の項目を1つ追加(雛形に依存しない)
-// key/label を持たせず、texts に空1つを入れてテキスト欄を最初から表示。
-// ---------- 容量確認モーダル ----------
-
-// バイト数を読みやすい単位に変換
-function formatBytes(bytes) {
-  if (bytes === 0 || !bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
-  return val.toFixed(val < 10 && i > 0 ? 2 : val < 100 ? 1 : 0) + " " + units[i];
-}
-
-// images/ フォルダの全ファイルを再帰的に取得(GitHub Contents API)
-async function listAllFiles(dir) {
-  try {
-    const res = await ghFetch(`contents/${dir}`);
-    if (!res.ok) return [];
-    const items = await res.json();
-    const files = [];
-    for (const it of items) {
-      if (it.type === "file") {
-        files.push({ path: it.path, name: it.name, size: it.size });
-      } else if (it.type === "dir") {
-        const sub = await listAllFiles(it.path);
-        files.push(...sub);
-      }
-    }
-    return files;
-  } catch (e) {
-    return [];
-  }
-}
-
-async function openStorageModal() {
-  $("storage-modal").style.display = "flex";
-  $("storage-loading").style.display = "block";
-  $("storage-content").style.display = "none";
-  $("storage-content").innerHTML = "";
-  try {
-    // リポジトリ全体のサイズ(KB単位で返ってくる)
-    const repoRes = await fetch(`https://api.github.com/repos/${auth.owner}/${auth.repo}`, {
-      headers: { "Authorization": `token ${auth.token}`, "Accept": "application/vnd.github+json" }
-    });
-    const repoInfo = await repoRes.json();
-    const repoSizeBytes = (repoInfo.size || 0) * 1024;
-
-    // images/ と files/ の中身を取得
-    const [imageFiles, otherFiles] = await Promise.all([
-      listAllFiles("images"),
-      listAllFiles("files")
-    ]);
-    const allFiles = imageFiles.concat(otherFiles);
-    const imageTotal = imageFiles.reduce((s, f) => s + (f.size || 0), 0);
-    const fileTotal = otherFiles.reduce((s, f) => s + (f.size || 0), 0);
-
-    // 大きい順 トップ10
-    const top10 = allFiles.slice().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 10);
-
-    // 推奨1GBへの割合
-    const SOFT_LIMIT = 1024 * 1024 * 1024; // 1GB
-    const HARD_WARN = 5 * 1024 * 1024 * 1024; // 5GB
-    const pct = Math.min(100, (repoSizeBytes / SOFT_LIMIT) * 100);
-    const warnLevel = repoSizeBytes >= HARD_WARN ? "danger" : repoSizeBytes >= SOFT_LIMIT ? "warn" : "ok";
-    const warnMsg = warnLevel === "danger" ? "⚠ 5GB超え。整理を強く推奨" :
-                    warnLevel === "warn" ? "推奨1GBを超えています(まだ問題なし、5GBまでは余裕あり)" :
-                    "余裕あり";
-
-    const topRows = top10.map((f, i) => `
-      <tr>
-        <td class="storage-rank">${i + 1}</td>
-        <td class="storage-name" title="${escapeHtml(f.path)}">${escapeHtml(f.name)}</td>
-        <td class="storage-size">${formatBytes(f.size)}</td>
-      </tr>`).join("");
-
-    $("storage-content").innerHTML = `
-      <div class="storage-section">
-        <div class="storage-label">リポジトリ全体</div>
-        <div class="storage-big">${formatBytes(repoSizeBytes)}</div>
-        <div class="storage-bar"><div class="storage-bar-fill ${warnLevel}" style="width:${pct.toFixed(1)}%"></div></div>
-        <div class="storage-note storage-note-${warnLevel}">${escapeHtml(warnMsg)}　/　推奨1GB・上限5GB</div>
-      </div>
-      <div class="storage-section">
-        <div class="storage-row"><span class="storage-label">画像 (images/)</span><span class="storage-value">${imageFiles.length}枚 / ${formatBytes(imageTotal)}</span></div>
-        <div class="storage-row"><span class="storage-label">添付ファイル (files/)</span><span class="storage-value">${otherFiles.length}件 / ${formatBytes(fileTotal)}</span></div>
-      </div>
-      ${top10.length ? `
-      <div class="storage-section">
-        <div class="storage-label">大きいファイル トップ${top10.length}</div>
-        <table class="storage-table"><tbody>${topRows}</tbody></table>
-      </div>` : ""}
-    `;
-    $("storage-loading").style.display = "none";
-    $("storage-content").style.display = "block";
-  } catch (err) {
-    $("storage-loading").textContent = "取得失敗: " + err.message;
-  }
-}
-
-function closeStorageModal() {
-  $("storage-modal").style.display = "none";
-}
-
-// ---------- タグ設定モーダル ----------
-
-function openTagSettings() {
-  $("tag-settings-modal").style.display = "flex";
-  renderTagSettings();
-}
-
-// タグ設定の中身を描画
-function renderTagSettings() {
-  const wrap = $("tag-settings-body");
-  if (!wrap) return;
-  const groupsHtml = (tagGroups || []).map((g, gi) => {
-    const tagsHtml = (g.tags || []).map((t, ti) => {
-      const paletteHtml = TAG_COLOR_PALETTE.map((c) => {
-        const sel = (c.toLowerCase() === (t.color || "").toLowerCase()) ? " selected" : "";
-        return `<button type="button" class="tag-color-swatch${sel}" data-gi="${gi}" data-ti="${ti}" data-color="${c}" style="background:${c}" title="${c}"></button>`;
-      }).join("");
-      const curColor = t.color || "#888";
-      return `
-        <div class="tag-row">
-          <input type="text" class="tag-name-input" data-gi="${gi}" data-ti="${ti}" value="${escapeHtml(t.name)}" placeholder="タグ名" maxlength="10" />
-          <div class="tag-color-picker" data-gi="${gi}" data-ti="${ti}">
-            <button type="button" class="tag-color-current" data-gi="${gi}" data-ti="${ti}" style="background:${curColor}" title="クリックで色を選択"></button>
-            <div class="tag-color-dropdown">${paletteHtml}</div>
-          </div>
-          <button type="button" class="tag-row-remove" data-gi="${gi}" data-ti="${ti}" title="このタグを削除">×</button>
-        </div>`;
-    }).join("");
-    return `
-      <div class="tag-group-card" data-gi="${gi}">
-        <div class="tag-group-head">
-          <input type="text" class="tag-group-name-input" data-gi="${gi}" value="${escapeHtml(g.name)}" placeholder="グループ名" maxlength="20" />
-          <div class="tag-group-head-actions">
-            <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="up" title="上へ" ${gi === 0 ? "disabled" : ""}>↑</button>
-            <button type="button" class="tag-group-move" data-gi="${gi}" data-dir="down" title="下へ" ${gi === tagGroups.length - 1 ? "disabled" : ""}>↓</button>
-            <button type="button" class="tag-group-remove" data-gi="${gi}" title="このグループを削除">グループ削除</button>
-          </div>
-        </div>
-        <div class="tag-rows">${tagsHtml}</div>
-        <button type="button" class="tag-add-row" data-gi="${gi}">＋ タグを追加</button>
-      </div>`;
-  }).join("");
-  wrap.innerHTML = groupsHtml || '<div class="state-msg" style="padding:24px">グループがありません。下の「グループを追加」で作ってください。</div>';
-  bindTagSettingsEvents();
-}
-
-function bindTagSettingsEvents() {
-  const wrap = $("tag-settings-body");
-  if (!wrap) return;
-  // タグ名の編集(blur保存)
-  wrap.querySelectorAll(".tag-name-input").forEach((inp) => {
-    inp.addEventListener("blur", () => {
-      const gi = parseInt(inp.dataset.gi), ti = parseInt(inp.dataset.ti);
-      const newName = inp.value.trim();
-      if (!newName) { inp.value = tagGroups[gi].tags[ti].name; return; }
-      const oldName = tagGroups[gi].tags[ti].name;
-      if (oldName === newName) return;
-      // 名前が変わったら、既存の商品のtags配列も置換
-      tagGroups[gi].tags[ti].name = newName;
-      products.forEach((p) => {
-        if (Array.isArray(p.tags)) {
-          const i = p.tags.indexOf(oldName);
-          if (i !== -1) p.tags[i] = newName;
-        }
-      });
-      saveTagSettings();
-    });
-    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-  });
-  // グループ名の編集
-  wrap.querySelectorAll(".tag-group-name-input").forEach((inp) => {
-    inp.addEventListener("blur", () => {
-      const gi = parseInt(inp.dataset.gi);
-      const newName = inp.value.trim();
-      if (!newName) { inp.value = tagGroups[gi].name; return; }
-      if (tagGroups[gi].name === newName) return;
-      tagGroups[gi].name = newName;
-      saveTagSettings();
-    });
-    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-  });
-  // 色の選択(色スウォッチクリック → 値変更してドロップダウンを閉じる)
-  wrap.querySelectorAll(".tag-color-swatch").forEach((sw) => {
-    sw.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const gi = parseInt(sw.dataset.gi), ti = parseInt(sw.dataset.ti);
-      tagGroups[gi].tags[ti].color = sw.dataset.color;
-      saveTagSettings();
-    });
-  });
-  // 現在色クリックでドロップダウン開閉(同時に他のものは閉じる)
-  wrap.querySelectorAll(".tag-color-current").forEach((cur) => {
-    cur.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const picker = cur.closest(".tag-color-picker");
-      const wasOpen = picker.classList.contains("open");
-      // すべて閉じてから、押したものだけ開く(トグル)
-      wrap.querySelectorAll(".tag-color-picker.open").forEach((p) => p.classList.remove("open"));
-      if (!wasOpen) picker.classList.add("open");
-    });
-  });
-  // タグの削除
-  wrap.querySelectorAll(".tag-row-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const gi = parseInt(btn.dataset.gi), ti = parseInt(btn.dataset.ti);
-      const tagName = tagGroups[gi].tags[ti].name;
-      if (!confirm(`タグ「${tagName}」を削除しますか? (このタグが付いた商品からも自動で外れます)`)) return;
-      tagGroups[gi].tags.splice(ti, 1);
-      // 既存商品の tags からも削除
-      products.forEach((p) => {
-        if (Array.isArray(p.tags)) {
-          const i = p.tags.indexOf(tagName);
-          if (i !== -1) p.tags.splice(i, 1);
-        }
-      });
-      saveTagSettings();
-    });
-  });
-  // タグの追加
-  wrap.querySelectorAll(".tag-add-row").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const gi = parseInt(btn.dataset.gi);
-      const usedColors = tagGroups[gi].tags.map((t) => t.color);
-      const newColor = TAG_COLOR_PALETTE.find((c) => !usedColors.includes(c)) || TAG_COLOR_PALETTE[0];
-      tagGroups[gi].tags.push({ name: "新しいタグ", color: newColor });
-      saveTagSettings();
-    });
-  });
-  // グループの並び替え
-  wrap.querySelectorAll(".tag-group-move").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const gi = parseInt(btn.dataset.gi);
-      const dir = btn.dataset.dir;
-      const newIdx = dir === "up" ? gi - 1 : gi + 1;
-      if (newIdx < 0 || newIdx >= tagGroups.length) return;
-      [tagGroups[gi], tagGroups[newIdx]] = [tagGroups[newIdx], tagGroups[gi]];
-      saveTagSettings();
-    });
-  });
-  // グループ削除
-  wrap.querySelectorAll(".tag-group-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const gi = parseInt(btn.dataset.gi);
-      const g = tagGroups[gi];
-      const tagNames = g.tags.map((t) => t.name);
-      if (!confirm(`グループ「${g.name}」を削除しますか? (このグループのタグが付いた商品からも自動で外れます)`)) return;
-      tagGroups.splice(gi, 1);
-      // 既存商品から該当タグを全部外す
-      products.forEach((p) => {
-        if (Array.isArray(p.tags)) p.tags = p.tags.filter((t) => !tagNames.includes(t));
-      });
-      saveTagSettings();
-    });
-  });
-}
-
-// 新グループ追加
-function addTagGroup() {
-  tagGroups.push({
-    id: "g_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-    name: "新しいグループ",
-    tags: []
-  });
-  saveTagSettings();
-}
-
-// 設定の保存(楽観的更新): UI即更新 → 裏で保存 → 失敗時のみ通知
-function saveTagSettings() {
-  renderTagSettings();         // タグ設定モーダルを再描画
-  render();                    // トップ画面のタグラベルも反映
-  // 編集ページが開いてたらそこも更新
-  if (currentDetailId) {
-    const p = products.find((x) => x.id === currentDetailId);
-    if (p) updateTagButtons(p);
-  }
-  // mergeFn: 再ロード時にローカルのproducts状態(タグ名変更等を反映済み)を維持する
-  // tagGroupsはグローバル変数なので _saveDataImpl が自動でJSONに含める
-  const localProducts = products.slice();
-  saveData("Update tag settings", () => localProducts)
-    .catch((err) => alert("タグ設定の保存に失敗: " + err.message));
-}
-
-async function addBlankSectionItem() {
-  const p = getCurrentProduct();
-  if (!p) return;
-  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
-  const iid = genId();
-  p.sectionItems.push({
-    iid,
-    key: "free-" + iid,   // 雛形に紐づかない一意キー
-    textsTop: [""],       // 画像の上のテキスト欄(空1個)
-    textsBottom: [""],    // 画像の下のテキスト欄(空1個)
-    images: [], files: [], imagesFinal: [], filesFinal: []
-  });
-  // 高速化(v3.32): 画面更新は即時、保存は背景で実行(楽観的更新)。
-  // GitHub API応答を待たないので体感が一瞬。
-  renderSections(p);
-  // 追加した項目の位置までスクロール
-  setTimeout(() => {
-    const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
-    if (section) section.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, 30);
-  // 保存はバックグラウンド(エラーは通知だけして画面は維持)
-  saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p))
-    .catch((err) => alert("追加の保存に失敗: " + err.message));
-}
-
-// 項目ごと削除(その商品からこのインスタンスを消す)
-async function removeSectionItem(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const def = sectionDefs.find((d) => d.key === item.key);
-  const label = def ? def.label : "この項目";
-  const hasContent = (item.textsTop && item.textsTop.length) || (item.textsBottom && item.textsBottom.length) || allItemPaths(item).length;
-  if (!confirm(`「${label}」を削除しますか?${hasContent ? "\n中のテキスト・画像・ファイルも削除されます。" : ""}`)) return;
-  try {
-    for (const path of allItemPaths(item)) {
-      try { await deleteFile(path, null, `Remove section item file: ${p.id}`); }
-      catch (e) { console.warn("削除失敗(続行):", e); }
-    }
-    p.sectionItems = p.sectionItems.filter((x) => x.iid !== iid);
-    await saveData(`Remove section item: ${p.name}`, mergeCurrentProduct(p));
-    renderSections(p);
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-function getCurrentProduct() {
-  return products.find((x) => x.id === currentDetailId);
-}
-
-// ---------- 全画面テキストエディタ ----------
-let fsEditing = null; // { iid, pos, idx }
-
-function openTextFullscreen(iid, pos, idx) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const arr = item[textArrName(pos)];
-  if (!arr || arr[idx] === undefined) return;
-  fsEditing = { iid, pos, idx };
-  $("text-fullscreen-title").textContent = "テキスト";
-  const area = $("text-fullscreen-area");
-  area.value = arr[idx];
-  $("text-fullscreen").style.display = "flex";
-  setTimeout(() => {
-    area.focus();
-    area.setSelectionRange(0, 0);
-    area.scrollTop = 0;
-  }, 30);
-}
-
-// テキストの中身をクリップボードにコピー(押すと一瞬「✓」表示)
-async function copySectionText(btn) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, btn.dataset.iid);
-  if (!item) return;
-  const arr = item[textArrName(btn.dataset.pos)];
-  const idx = parseInt(btn.dataset.idx);
-  const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
-  const showOk = () => {
-    const orig = btn.textContent;
-    btn.textContent = "✓";
-    btn.classList.add("copied");
-    setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
-  };
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      // フォールバック(古い環境)
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    showOk();
-  } catch (e) {
-    alert("コピーに失敗しました: " + e.message);
-  }
-}
-
-// 商品内のテキスト通し番号(1始まり)。pos別に独立カウント:
-//   pos="top"   → 全項目のtextsTopだけを順に1,2,3…
-//   pos="bottom"→ 全項目のtextsBottomだけを順に1,2,3…
-function textSerialNumber(p, iid, pos, idx) {
-  if (!p || !Array.isArray(p.sectionItems)) return 1;
-  let n = 0;
-  for (const it of p.sectionItems) {
-    const arr = it[textArrName(pos)] || [];
-    for (let i = 0; i < arr.length; i++) {
-      n++;
-      if (it.iid === iid && i === idx) return n;
-    }
-  }
-  return n || 1;
-}
-
-// ファイル名に使えない文字を除去(Windows禁止文字 + 制御文字 + パス区切り)
-function safeFileName(name) {
-  return String(name || "untitled")
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/[\x00-\x1f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim() || "untitled";
-}
-
-// 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。
-// ファイル名は「商品名-入力文/回答文-通し番号.txt」
-function downloadSectionText(btn) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, btn.dataset.iid);
-  if (!item) return;
-  const pos = btn.dataset.pos;
-  const idx = parseInt(btn.dataset.idx);
-  const arr = item[textArrName(pos)];
-  const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
-  const serial = textSerialNumber(p, item.iid, pos, idx);
-  const label = pos === "bottom" ? "回答文" : "入力文";
-  const filename = `${safeFileName(p.name)}-${label}-${serial}.txt`;
-  // BOM付きUTF-8でダウンロード(Windowsのメモ帳で文字化けを防ぐ)
-  const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  // 押したフィードバック(一瞬「✓」)
-  const orig = btn.textContent;
-  btn.textContent = "✓";
-  btn.classList.add("copied");
-  setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
-}
-
-async function closeTextFullscreen() {
-  if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
-  const p = getCurrentProduct();
-  const { iid, pos, idx } = fsEditing;
-  const newVal = $("text-fullscreen-area").value.trim();
-  $("text-fullscreen").style.display = "none";
-  fsEditing = null;
-  if (!p) return;
-  const item = getItem(p, iid);
-  const arr = item ? item[textArrName(pos)] : null;
-  if (!item || !arr || arr[idx] === undefined) return;
-  if (arr[idx] === newVal) { renderSections(p); return; }
-  arr[idx] = newVal;
-  try {
-    await saveData(`Update text (fullscreen): ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-  }
-  renderSections(p);
-}
-
-function sectionLabelOf(item) {
-  return "項目";
-}
-
-// テキスト追加(pos: top/bottom)
-// テキスト確定(blur時)※現在は全画面エディタ経由のため通常未使用
-async function commitSectionText(iid, pos, idx, value) {
-  if (manualSaving) return;
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  const arr = item ? item[textArrName(pos)] : null;
-  if (!item || !arr || arr[idx] === undefined) return;
-  const newVal = value.trim();
-  if (arr[idx] === newVal) return;
-  arr[idx] = newVal;
-  try {
-    await saveData(`Update text: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-  }
-}
-
-// 貼り付け(paste)専用: 改行を含むrawTextをそのままデータに保存する。
-// 1行input欄に改行を貼っても消えないようにするための専用パス。
-async function pasteCommitSectionText(iid, pos, idx, rawText) {
-  if (manualSaving) return;
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  const arr = item ? item[textArrName(pos)] : null;
-  if (!item || !arr || arr[idx] === undefined) return;
-  // trimは前後だけ。内部の改行は保持。
-  const newVal = String(rawText).replace(/^\s+|\s+$/g, "");
-  if (arr[idx] === newVal) return;
-  arr[idx] = newVal;
-  try {
-    await saveData(`Paste text: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-  }
-}
-
-async function removeSectionText(iid, pos, idx) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  if (!confirm("このテキストを削除しますか?")) return;
-  const arr = item[textArrName(pos)];
-  arr.splice(idx, 1);
-  try {
-    await saveData(`Remove text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
-    renderSections(p);
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-// itemの全アップロードパス(画像・ファイル、素材・完成品すべて)
-function allItemPaths(item) {
-  const paths = [];
-  (item.images || []).forEach((p) => paths.push(p));
-  (item.imagesFinal || []).forEach((p) => paths.push(p));
-  (item.files || []).forEach((f) => paths.push(f.path));
-  (item.filesFinal || []).forEach((f) => paths.push(f.path));
-  return paths;
-}
-
-// side に応じた配列名を返す
-function arrNames(side) {
-  return side === "final"
-    ? { img: "imagesFinal", file: "filesFinal" }
-    : { img: "images", file: "files" };
-}
-
-// 画像・ファイル追加(side: material / final)
-async function addSectionImages(iid, side, files) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const names = arrNames(side);
-  if (!Array.isArray(item[names.img])) item[names.img] = [];
-  if (!Array.isArray(item[names.file])) item[names.file] = [];
-
-  const all = [...files];
-  if (all.length === 0) return;
-
-  setHeadStatus(`アップロード中… (0/${all.length})`);
-  try {
-    for (let i = 0; i < all.length; i++) {
-      const file = all[i];
-      if (file.size > 50 * 1024 * 1024) {
-        alert(`${file.name} は大きすぎます(50MB超)。スキップします。`);
-        continue;
-      }
-      setHeadStatus(`アップロード中… (${i + 1}/${all.length})`);
-      const base64 = await fileToBase64(file);
-      const ext = (file.name.split(".").pop() || "bin").toLowerCase();
-      if (file.type.startsWith("image/")) {
-        const path = `${IMAGES_DIR}/${p.id}-${item.iid}-${side}-${Date.now()}-${i + 1}.${ext}`;
-        await uploadFile(path, base64, `Add image to ${sectionLabelOf(item)}: ${p.id}`);
-        item[names.img].push(path);
-      } else {
-        const safeName = file.name.replace(/[^\w.\-]/g, "_");
-        const path = `${FILES_DIR}/${p.id}-${item.iid}-${side}-${Date.now()}-${i + 1}-${safeName}`;
-        await uploadFile(path, base64, `Add file to ${sectionLabelOf(item)}: ${p.id}`);
-        item[names.file].push({ path, name: file.name });
-      }
-    }
-    await saveData(`Add files to ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
-    setHeadStatus("✓ 追加しました", "ok");
-    renderSections(p);
-    setTimeout(() => setHeadStatus(""), 1200);
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// 「右上の完成品を使用」プレースホルダ画像(文字だけの□)を素材に追加
-// SVGで生成 → 通常の画像と同じく images/ にアップロードし item.images に追加。
-// これによりライトボックス・⇔移動・削除・並べ替えすべて既存処理で動く。
-function finalPlaceholderSvgBase64() {
-  // 正方形・落ち着いた配色。文言は「右上の完成品を使用」
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
-  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
-    <text x="300" y="250" font-size="58" fill="#c8451c">↗</text>
-    <text x="300" y="330" font-size="42" font-weight="700">右上の</text>
-    <text x="300" y="392" font-size="42" font-weight="700">完成品を使用</text>
-  </g>
-</svg>`;
-  return b64encode(svg);
-}
-
-async function addFinalPlaceholder(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  if (!Array.isArray(item.images)) item.images = [];
-  setHeadStatus("プレースホルダを追加中…");
-  try {
-    const base64 = finalPlaceholderSvgBase64();
-    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-usefinal.svg`;
-    await uploadFile(path, base64, `Add 'use final' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
-    item.images.push(path);
-    await saveData(`Add 'use final' placeholder: ${p.name}`, mergeCurrentProduct(p));
-    setHeadStatus("✓ 追加しました", "ok");
-    renderSections(p);
-    setTimeout(() => setHeadStatus(""), 1200);
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// 「↑上部の情報を使用」プレースホルダ画像。完成品用とほぼ同じ配色で、矢印だけ青。
-function topPlaceholderSvgBase64() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
-  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
-    <text x="300" y="250" font-size="58" fill="#2f6db5">↑</text>
-    <text x="300" y="330" font-size="42" font-weight="700">上部の</text>
-    <text x="300" y="392" font-size="42" font-weight="700">情報を使用</text>
-  </g>
-</svg>`;
-  return b64encode(svg);
-}
-
-async function addTopPlaceholder(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  if (!Array.isArray(item.images)) item.images = [];
-  setHeadStatus("プレースホルダを追加中…");
-  try {
-    const base64 = topPlaceholderSvgBase64();
-    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-usetop.svg`;
-    await uploadFile(path, base64, `Add 'use top' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
-    item.images.push(path);
-    await saveData(`Add 'use top' placeholder: ${p.name}`, mergeCurrentProduct(p));
-    setHeadStatus("✓ 追加しました", "ok");
-    renderSections(p);
-    setTimeout(() => setHeadStatus(""), 1200);
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// 「all 当画像以前の画像を使用」プレースホルダ画像。完成品用と同じ配色で、矢印の代わりに緑の「all」。
-function topAllPlaceholderSvgBase64() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
-  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
-    <text x="300" y="262" font-size="84" font-weight="800" fill="#2e9e5b">all</text>
-    <text x="300" y="345" font-size="38" font-weight="700">当画像以前の</text>
-    <text x="300" y="407" font-size="38" font-weight="700">画像を使用</text>
-  </g>
-</svg>`;
-  return b64encode(svg);
-}
-
-async function addTopAllPlaceholder(iid) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  if (!Array.isArray(item.images)) item.images = [];
-  setHeadStatus("プレースホルダを追加中…");
-  try {
-    const base64 = topAllPlaceholderSvgBase64();
-    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-usetopall.svg`;
-    await uploadFile(path, base64, `Add 'use top all' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
-    item.images.push(path);
-    await saveData(`Add 'use top all' placeholder: ${p.name}`, mergeCurrentProduct(p));
-    setHeadStatus("✓ 追加しました", "ok");
-    renderSections(p);
-    setTimeout(() => setHeadStatus(""), 1200);
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// 完成品画像のチェック切替: imagesFinalChecked 配列に path を入れる/外す → 保存
-async function toggleFinalChecked(iid, path, isChecked) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  if (!Array.isArray(item.imagesFinalChecked)) item.imagesFinalChecked = [];
-  const i = item.imagesFinalChecked.indexOf(path);
-  if (isChecked && i === -1) item.imagesFinalChecked.push(path);
-  if (!isChecked && i !== -1) item.imagesFinalChecked.splice(i, 1);
-  // 即DOMにも反映(完成品アイテムの枠強調)
-  const wrapEl = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
-  if (wrapEl) {
-    wrapEl.querySelectorAll(`.sec-img-check-input[data-path="${CSS.escape(path)}"]`).forEach((cb) => {
-      const item = cb.closest(".sec-img-item");
-      if (item) item.classList.toggle("checked", isChecked);
-    });
-  }
-  try {
-    await saveData(`Toggle final-checked: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-  }
-}
-
-// 「完成品を表示中」モード専用の表示順を左右に動かす
-// dir: "left" | "right"。商品ごとに p.finalOrder 配列で順を保持。
-async function moveFinalThumb(productId, path, dir) {
-  const p = products.find((x) => x.id === productId);
-  if (!p) return;
-  // 現在の表示順を取得して、これを基準に並び替えする(未保存の新規分も自動で含まれる)
-  const currentOrder = collectAllImages(p, "checked");
-  const i = currentOrder.indexOf(path);
-  if (i === -1) return;
-  const j = dir === "left" ? i - 1 : i + 1;
-  if (j < 0 || j >= currentOrder.length) return;
-  // 入れ替え
-  [currentOrder[i], currentOrder[j]] = [currentOrder[j], currentOrder[i]];
-  p.finalOrder = currentOrder;
-  // 即座にトップ画面を更新(ボタンのdisabled状態も再計算される)
-  render();
-  try {
-    await saveData(`Reorder finals: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("保存失敗: " + err.message);
-  }
-}
-
-async function removeSectionFile(iid, side, idx) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  const names = arrNames(side);
-  if (!item || !Array.isArray(item[names.file]) || !item[names.file][idx]) return;
-  if (!confirm("このファイルを削除しますか?")) return;
-  const f = item[names.file][idx];
-  try {
-    try { await deleteFile(f.path, null, `Remove file from ${sectionLabelOf(item)}: ${p.id}`); }
-    catch (e) { console.warn("ファイル削除失敗(続行):", e); }
-    item[names.file].splice(idx, 1);
-    await saveData(`Remove file from ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
-    renderSections(p);
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-// 画像削除(side対応)
-async function removeSectionImage(iid, side, idx) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  const names = arrNames(side);
-  if (!item || !item[names.img][idx]) return;
-  if (!confirm("この画像を削除しますか?")) return;
-  const path = item[names.img][idx];
-  try {
-    try { await deleteFile(path, null, `Remove image from ${sectionLabelOf(item)}: ${p.id}`); }
-    catch (e) { console.warn("画像削除失敗(続行):", e); }
-    item[names.img].splice(idx, 1);
-    await saveData(`Remove image from ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
-    renderSections(p);
-  } catch (err) {
-    alert("削除失敗: " + err.message);
-  }
-}
-
-// 画像/ファイルを反対側へ移動(⇔)
-async function swapSide(iid, kind, side, idx) {
-  const p = getCurrentProduct();
-  if (!p) return;
-  const item = getItem(p, iid);
-  if (!item) return;
-  const from = arrNames(side);
-  const to = arrNames(side === "final" ? "material" : "final");
-  const fromArr = item[kind === "img" ? from.img : from.file];
-  const toArr = item[kind === "img" ? to.img : to.file];
-  if (!Array.isArray(fromArr) || fromArr[idx] === undefined) return;
-  const [moved] = fromArr.splice(idx, 1);
-  toArr.push(moved);
-  renderSections(p);
-  try {
-    await saveData(`Move ${kind} to other side: ${p.name}`, mergeCurrentProduct(p));
-  } catch (err) {
-    alert("移動の保存に失敗: " + err.message);
-  }
-}
-
-// ---------- 手動保存(右上の保存ボタン) ----------
-// forClose: trueなら閉じる用途(保存失敗をalertでなくconsoleに)。
-// 戻り値: 保存に成功したか(falseは「保存できなかった/中断」)。
-async function saveAllCurrent(forClose) {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return false;
-  manualSaving = true;
-  if (document.activeElement && typeof document.activeElement.blur === "function") {
-    document.activeElement.blur();
-  }
-  const name = $("edit-product-name").value.trim();
-  const startDate = $("edit-start-date").value.trim();
-  if (!name) { alert("商品名は空にできません"); manualSaving = false; return false; }
-  p.name = name;
-  p.startDate = startDate;
-  // テキストは全画面エディタを閉じた時点で item.texts に保存済みなので、ここでの収集は不要
-  try {
-    await saveData(`Save product: ${p.name}`, mergeCurrentProduct(p));
-    render();
-    return true;
-  } catch (err) {
-    if (!forClose) alert("保存失敗: " + err.message);
-    else console.error("保存失敗:", err);
-    return false;
-  } finally {
-    manualSaving = false;
-  }
-}
-
-// 保存だけして編集を継続(右上「保存」)
-async function saveOnlyKeepOpen() {
-  const ok = await saveAllCurrent(false);
-  if (ok) {
-    setHeadStatus("✓ 保存しました", "ok");
-    setTimeout(() => setHeadStatus(""), 1200);
-  }
-}
-
-// 保存して閉じる(右上「保存×」)
-async function saveAndClose() {
-  await saveAllCurrent(true);
-  $("detail-modal").style.display = "none";
-}
-
-// 保存せず閉じる(右上「×」)
-// B案: 今フォーカス中の欄の未確定分も保存せずに破棄する。
-// manualSaving を立ててから blur することで、blur保存(commitSectionText等)をスキップさせる。
-function closeWithoutSaving() {
-  manualSaving = true;
-  if (document.activeElement && typeof document.activeElement.blur === "function") {
-    document.activeElement.blur();
-  }
-  $("detail-modal").style.display = "none";
-  // blurによる非同期保存が走らないよう、少し後にフラグを戻す
-  setTimeout(() => { manualSaving = false; }, 0);
-}
-
-// ---------- 商品情報インライン編集 ----------
-function setHeadStatus(msg, kind) {
-  const el = $("editor-head-status");
-  el.textContent = msg;
-  el.className = "save-status" + (kind ? " " + kind : "");
-}
-
-// 商品名・日付の確定(blur時)
-async function commitProductField(field, value) {
-  if (manualSaving) return;
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return;
-  const v = value.trim();
-  if (field === "name") {
-    if (!v) { alert("商品名は空にできません"); $("edit-product-name").value = p.name; return; }
-    if (p.name === v) return;
-    p.name = v;
-  } else if (field === "startDate") {
-    if (p.startDate === v) return;
-    p.startDate = v;
-  }
-  try {
-    setHeadStatus("保存中…");
-    await saveData(`Update product field: ${p.name}`, mergeCurrentProduct(p));
-    setHeadStatus("✓ 保存しました", "ok");
-    setTimeout(() => setHeadStatus(""), 1000);
-    render(); // 一覧のカードにも反映
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// タグ選択UIを動的生成し、商品データから選択状態を反映
-function updateTagButtons(p) {
-  const wrap = $("editor-tags");
-  if (!wrap) return;
-  const tags = Array.isArray(p.tags) ? p.tags : [];
-  const groupsHtml = (tagGroups || []).map((g) => {
-    if (!g || !Array.isArray(g.tags) || g.tags.length === 0) return "";
-    const btns = g.tags.map((t) => {
-      const isActive = tags.includes(t.name);
-      const bg = t.color || "#888";
-      // 未選択は白背景+その色の枠線+その色の文字。選択時はその色の塗り+白文字。
-      const style = isActive
-        ? `background:${bg};color:#fff;border-color:${bg};`
-        : `background:#fff;color:${bg};border-color:${bg};`;
-      return `<button type="button" class="editor-tag-btn${isActive ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
-    }).join("");
-    return `<div class="editor-tag-group">
-        <div class="editor-tag-label">${escapeHtml(g.name)}</div>
-        <div class="editor-tag-btns">${btns}</div>
-      </div>`;
-  }).join("");
-  wrap.innerHTML = groupsHtml;
-  // ボタンのイベントbind(動的生成なので毎回必要)
-  wrap.querySelectorAll(".editor-tag-btn").forEach((btn) => {
-    btn.addEventListener("click", () => toggleProductTag(btn.dataset.tag));
-  });
-}
-
-// 色を薄くする(背景用): #RRGGBB を「白に混ぜた淡い色」に
-function hexToLight(hex) {
-  const h = (hex || "").replace("#", "");
-  if (h.length !== 6) return "#f0f0f0";
-  const r = parseInt(h.substr(0, 2), 16);
-  const g = parseInt(h.substr(2, 2), 16);
-  const b = parseInt(h.substr(4, 2), 16);
-  // 白に約75%混ぜる
-  const mix = (c) => Math.round(c + (255 - c) * 0.78);
-  return `#${[mix(r), mix(g), mix(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-}
-
-// タグの選択を切り替え(複数選択可)
-async function toggleProductTag(tag) {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return;
-  if (!Array.isArray(p.tags)) p.tags = [];
-  const i = p.tags.indexOf(tag);
-  if (i === -1) p.tags.push(tag);
-  else p.tags.splice(i, 1);
-  // 即UI反映
-  updateTagButtons(p);
-  // 保存はバックグラウンド(楽観的更新)
-  saveData(`Update tags: ${p.name}`, mergeCurrentProduct(p))
-    .then(() => render())
-    .catch((err) => alert("タグ保存失敗: " + err.message));
-}
-
-// 商品画像の差し替え
-async function changeProductImage(file) {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p || !file || !file.type.startsWith("image/")) return;
-  if (file.size > 50 * 1024 * 1024) { alert("画像が大きすぎます(50MB超)。"); return; }
-  try {
-    setHeadStatus("画像をアップロード中…");
-    const base64 = await fileToBase64(file);
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const newPath = `${IMAGES_DIR}/${p.id}-main-${Date.now()}.${ext}`;
-    await uploadFile(newPath, base64, `Change product image: ${p.id}`);
-    // 古い画像を削除(あれば)
-    if (p.image) {
-      try { await deleteFile(p.image, null, `Delete old image: ${p.id}`); }
-      catch (e) { console.warn("旧画像削除失敗(続行):", e); }
-    }
-    blobCache.delete(p.image);
-    p.image = newPath;
-    await saveData(`Change product image: ${p.name}`, mergeCurrentProduct(p));
-    // 表示更新
-    $("detail-img").style.display = "";
-    $("detail-noimg").style.display = "none";
-    $("editor-img-remove").style.display = "";
-    $("detail-img").src = "";
-    loadImageInto($("detail-img"), p.image);
-    setHeadStatus("✓ 画像を更新しました", "ok");
-    setTimeout(() => setHeadStatus(""), 1200);
-    render();
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// メイン画像を削除(右上の×ボタン)
-async function removeProductImage() {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p || !p.image) return;
-  if (!confirm("メイン画像を削除しますか?")) return;
-  const oldPath = p.image;
-  try {
-    setHeadStatus("画像を削除中…");
-    try { await deleteFile(oldPath, null, `Delete main image: ${p.id}`); }
-    catch (e) { console.warn("画像削除失敗(続行):", e); }
-    blobCache.delete(oldPath);
-    p.image = "";
-    await saveData(`Remove main image: ${p.name}`, mergeCurrentProduct(p));
-    // 表示更新
-    $("detail-img").style.display = "none";
-    $("detail-noimg").style.display = "flex";
-    $("editor-img-remove").style.display = "none";
-    setHeadStatus("✓ 画像を削除しました", "ok");
-    setTimeout(() => setHeadStatus(""), 1200);
-    render();
-  } catch (err) {
-    setHeadStatus("✗ " + err.message, "err");
-  }
-}
-
-// 現在の商品を最新データにマージする関数を返す(競合対策)
-function mergeCurrentProduct(p) {
-  return (latest) => latest.map((x) => x.id === p.id ? p : x);
-}
-
-// File → base64(content部分のみ)
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => resolve(ev.target.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ---------- ライトボックス(画像拡大・前後送り対応 v3.4.0) ----------
-// lightboxList: 表示中のまとまり(同じ行/同じ項目の画像src配列)
-// lightboxIdx : その中で今表示している位置
-let lightboxList = [];
-let lightboxIdx = 0;
-
-// list: 画像srcの配列(まとまり)、startIdx: 開始位置
-function showLightbox(list, startIdx) {
-  if (!Array.isArray(list) || list.length === 0) return;
-  lightboxList = list.filter((s) => !!s);
-  if (lightboxList.length === 0) return;
-  lightboxIdx = Math.max(0, Math.min(startIdx || 0, lightboxList.length - 1));
-  updateLightbox();
-  $("lightbox").style.display = "flex";
-}
-
-// 表示内容の更新(メイン画像・前後プレビュー・カウンター・矢印の出し分け)
-function updateLightbox() {
-  const total = lightboxList.length;
-  const cur = lightboxList[lightboxIdx];
-  $("lightbox-img").src = cur || "";
-
-  const counter = $("lightbox-counter");
-  if (counter) counter.textContent = total > 1 ? `${lightboxIdx + 1} / ${total}` : "";
-
-  const prevBtn = $("lightbox-prev");
-  const nextBtn = $("lightbox-next");
-  const prevImg = $("lightbox-prev-img");
-  const nextImg = $("lightbox-next-img");
-
-  // まとまりの中だけで前後送り(端ではボタンを隠す)
-  const hasPrev = lightboxIdx > 0;
-  const hasNext = lightboxIdx < total - 1;
-  if (prevBtn) prevBtn.classList.toggle("disabled", !hasPrev);
-  if (nextBtn) nextBtn.classList.toggle("disabled", !hasNext);
-  if (prevImg) prevImg.src = hasPrev ? (lightboxList[lightboxIdx - 1] || "") : "";
-  if (nextImg) nextImg.src = hasNext ? (lightboxList[lightboxIdx + 1] || "") : "";
-}
-
-// 前後送り(まとまりの範囲内のみ。端は何もしない)
-function lightboxNav(delta) {
-  const next = lightboxIdx + delta;
-  if (next < 0 || next >= lightboxList.length) return;
-  lightboxIdx = next;
-  updateLightbox();
-}
-
-function closeLightbox() {
-  $("lightbox").style.display = "none";
-  lightboxList = [];
-  lightboxIdx = 0;
-  $("lightbox-img").src = "";
-  const pi = $("lightbox-prev-img"); if (pi) pi.src = "";
-  const ni = $("lightbox-next-img"); if (ni) ni.src = "";
-}
-
-async function deleteProduct() {
-  const p = products.find((x) => x.id === currentDetailId);
-  if (!p) return;
-  if (!confirm(`商品「${p.name}」を削除しますか?\n(画像・CSVファイルも削除されます)`)) return;
-  try {
-    if (p.image) {
-      try { await deleteFile(p.image, null, `Delete image: ${p.id}`); }
-      catch (e) { console.warn("画像削除失敗(続行):", e); }
-    }
-    if (p.csvPath) {
-      try { await deleteFile(p.csvPath, null, `Delete csv: ${p.id}`); }
-      catch (e) { console.warn("CSV削除失敗(続行):", e); }
-    }
-    // 全項目の画像・ファイルも削除
-    if (Array.isArray(p.sectionItems)) {
-      for (const it of p.sectionItems) {
-        for (const path of allItemPaths(it)) {
-          try { await deleteFile(path, null, `Delete section file: ${p.id}`); }
-          catch (e) { console.warn("セクション削除失敗(続行):", e); }
-        }
-      }
-    }
-    products = products.filter((x) => x.id !== p.id);
-    await saveData(`Delete product: ${p.name}`, (latest) => latest.filter((x) => x.id !== p.id));
-    $("detail-modal").style.display = "none";
-    render();
-  } catch (err) {
-    alert("削除に失敗しました: " + err.message);
-  }
-}
-
-// ---------- 追加(商品登録) ----------
-function resetAddForm() {
-  pendingImage = null;
-  $("preview-wrap").style.display = "none";
-  $("dropzone").style.display = "block";
-  $("file-input").value = "";
-  $("input-start-date").value = todayShort();
-  $("input-product-name").value = "";
-  $("save-status").textContent = "";
-  $("save-status").className = "save-status";
-}
-
-function handleImageFile(file) {
-  if (!file || !file.type.startsWith("image/")) {
-    alert("画像ファイルを選んでください");
-    return;
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    alert("画像が大きすぎます(50MB超)。サイズを小さくしてください。");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    const base64 = dataUrl.split(",")[1];
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    pendingImage = { base64, mimeType: file.type, ext };
-    $("preview-img").src = dataUrl;
-    $("preview-wrap").style.display = "block";
-    $("dropzone").style.display = "none";
-  };
-  reader.readAsDataURL(file);
-}
-
-async function saveProduct() {
-  const startDate = $("input-start-date").value.trim();
-  const name = $("input-product-name").value.trim();
-  if (!startDate) { alert("スタート日付を入力してください"); return; }
-  if (!name) { alert("商品名を入力してください"); return; }
-
-  const btn = $("btn-save");
-  btn.disabled = true;
-  $("save-status").textContent = "保存中…";
-  $("save-status").className = "save-status";
-
-  try {
-    const id = genId();
-    let imgPath = undefined;
-    if (pendingImage) {
-      $("save-status").textContent = "画像をアップロード中…";
-      imgPath = `${IMAGES_DIR}/${id}.${pendingImage.ext}`;
-      await uploadFile(imgPath, pendingImage.base64, `Add product image: ${id}`);
-    }
-
-    $("save-status").textContent = "メタデータを保存中…";
-    const product = {
-      id,
-      name,
-      startDate,
-      image: imgPath,
-      sectionItems: [{ iid: genId(), key: "free-" + genId(), textsTop: [""], textsBottom: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }],  // 空項目を1個だけ用意(あとは「＋項目を追加」で増やす)
-      createdAt: new Date().toISOString()
-    };
-
-    products.unshift(product);
-    await saveData(`Add product: ${name}`, (latest) => [product, ...latest.filter((p) => p.id !== id)]);
-
-    $("save-status").textContent = "✓ 保存しました";
-    $("save-status").className = "save-status ok";
-    setTimeout(() => {
-      $("add-modal").style.display = "none";
-      resetAddForm();
-      render();
-    }, 700);
-  } catch (err) {
-    $("save-status").textContent = "✗ " + err.message;
-    $("save-status").className = "save-status err";
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-// ---------- イベント ----------
-function bindEvents() {
-  $("auth-save").addEventListener("click", async () => {
-    const a = {
-      owner: $("input-owner").value.trim(),
-      repo: $("input-repo").value.trim(),
-      branch: $("input-branch").value.trim() || "main",
-      token: $("input-token").value.trim()
-    };
-    if (!a.owner || !a.repo || !a.token) {
-      $("auth-error").textContent = "全ての項目を入力してください";
-      return;
-    }
-    $("auth-error").textContent = "";
-    $("auth-save").disabled = true;
-    $("auth-save").textContent = "接続中…";
-    try {
-      await verifyAuth(a);
-      saveAuth(a);
-      auth = a;
-      $("auth-modal").style.display = "none";
-      await init();
-    } catch (err) {
-      $("auth-error").textContent = err.message;
-    } finally {
-      $("auth-save").disabled = false;
-      $("auth-save").textContent = "接続する";
-    }
-  });
-
-  $("btn-settings").addEventListener("click", () => {
-    $("settings-modal").style.display = "flex";
-  });
-  $("settings-close").addEventListener("click", () => { $("settings-modal").style.display = "none"; });
-  $("settings-modal").addEventListener("click", (e) => {
-    if (e.target === $("settings-modal")) $("settings-modal").style.display = "none";
-  });
-  $("open-tag-settings").addEventListener("click", () => {
-    $("settings-modal").style.display = "none";
-    openTagSettings();
-  });
-  $("reset-connection").addEventListener("click", () => {
-    if (confirm("接続設定をリセットしますか? (トークン等をブラウザから削除)")) {
-      clearAuth();
-      location.reload();
-    }
-  });
-  $("tag-settings-close").addEventListener("click", () => { $("tag-settings-modal").style.display = "none"; });
-  $("tag-settings-modal").addEventListener("click", (e) => {
-    if (e.target === $("tag-settings-modal")) $("tag-settings-modal").style.display = "none";
-  });
-  // モーダル内のどこかをクリックしたら、開いてる色ドロップダウンを閉じる(スウォッチ自身/現在色ボタンは内側でstopPropagation済み)
-  $("tag-settings-modal").addEventListener("click", () => {
-    document.querySelectorAll(".tag-color-picker.open").forEach((p) => p.classList.remove("open"));
-  });
-  $("tag-add-group").addEventListener("click", addTagGroup);
-
-  $("btn-storage").addEventListener("click", openStorageModal);
-  $("storage-close").addEventListener("click", closeStorageModal);
-  $("storage-modal").addEventListener("click", (e) => {
-    if (e.target === $("storage-modal")) closeStorageModal();
-  });
-
-  $("logo-link").addEventListener("click", () => {
-    closeAllModals();
-    render();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-
-  $("btn-add").addEventListener("click", () => {
-    resetAddForm();
-    $("add-modal").style.display = "flex";
-    setTimeout(() => $("input-product-name").focus(), 50);
-  });
-
-  document.querySelectorAll("[data-close]").forEach((el) => {
-    el.addEventListener("click", () => {
-      $(el.dataset.close).style.display = "none";
-    });
-  });
-
-  const dz = $("dropzone");
-  dz.addEventListener("click", () => $("file-input").click());
-  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
-  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-  dz.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dz.classList.remove("drag");
-    handleImageFile(e.dataTransfer.files[0]);
-  });
-  $("file-input").addEventListener("change", (e) => handleImageFile(e.target.files[0]));
-  $("preview-clear").addEventListener("click", () => {
-    pendingImage = null;
-    $("preview-wrap").style.display = "none";
-    $("dropzone").style.display = "block";
-    $("file-input").value = "";
-  });
-
-  $("btn-save").addEventListener("click", saveProduct);
-  $("btn-delete").addEventListener("click", deleteProduct);
-
-  // v3.5.0: 編集ページ右上の3ボタン
-  // 保存 = 保存だけして開いたまま継続
-  $("btn-save-only").addEventListener("click", saveOnlyKeepOpen);
-  // 保存× = 保存して閉じる
-  $("btn-save-close").addEventListener("click", saveAndClose);
-  // × = 保存せず閉じる(B案: 今フォーカス中の欄も破棄)
-  $("btn-close-nosave").addEventListener("click", closeWithoutSaving);
-
-  // 素材除外の切り替え(画像一覧固定)
-  $("view-mode-show").addEventListener("click", () => setViewMode("show"));
-  $("view-mode-hide").addEventListener("click", () => setViewMode("hide"));
-  $("view-mode-checked").addEventListener("click", () => setViewMode("checked"));
-  $("btn-wrap-toggle").addEventListener("click", toggleGalleryWrap);
-
-  // 商品情報インライン編集(blurで保存)
-  $("edit-product-name").addEventListener("blur", (e) => commitProductField("name", e.target.value));
-  $("edit-start-date").addEventListener("blur", (e) => commitProductField("startDate", e.target.value));
-  $("edit-product-name").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-  $("edit-start-date").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
-
-  // 商品画像の差し替え
-  $("editor-img-change").addEventListener("click", () => $("editor-img-input").click());
-  $("editor-img-input").addEventListener("change", (e) => {
-    if (e.target.files[0]) changeProductImage(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("editor-img-remove").addEventListener("click", removeProductImage);
-
-  // ライトボックス: 背景クリックで閉じる(中の画像・ボタンクリックでは閉じない)
-  $("lightbox").addEventListener("click", (e) => {
-    if (e.target === $("lightbox")) closeLightbox();
-  });
-  // × 閉じる
-  $("lightbox-close").addEventListener("click", (e) => { e.stopPropagation(); closeLightbox(); });
-  // 前へ / 次へ
-  $("lightbox-prev").addEventListener("click", (e) => { e.stopPropagation(); lightboxNav(-1); });
-  $("lightbox-next").addEventListener("click", (e) => { e.stopPropagation(); lightboxNav(1); });
-  // メイン画像クリックでは閉じない(誤操作防止)
-  $("lightbox-img").addEventListener("click", (e) => e.stopPropagation());
-  // ← → で前後送り、Esc で閉じる
-  document.addEventListener("keydown", (e) => {
-    if ($("lightbox").style.display !== "flex") return;
-    if (e.key === "ArrowLeft") { e.preventDefault(); lightboxNav(-1); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); lightboxNav(1); }
-    else if (e.key === "Escape") { e.preventDefault(); closeLightbox(); }
-  });
-
-  // 全画面テキストエディタ: 完了ボタン
-  $("text-fullscreen-close").addEventListener("click", closeTextFullscreen);
-  // Escで全画面エディタを閉じる(保存して)
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && $("text-fullscreen").style.display === "flex") {
-      e.preventDefault();
-      closeTextFullscreen();
-    }
-  });
-
-  window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => e.preventDefault());
-
-  // ---------- マインドマップ:新規追加・操作 ----------
-  $("btn-add-mindmap").addEventListener("click", makeNewMindmap);
-  $("btn-mindmap-rename").addEventListener("click", renameMindmap);
-  $("btn-mindmap-delete").addEventListener("click", deleteMindmap);
-  $("btn-mindmap-save").addEventListener("click", saveMindmapChanges);
-  $("btn-mindmap-undo").addEventListener("click", undoMm);
-  $("btn-mindmap-redo").addEventListener("click", redoMm);
-
-  // 1段目タブ(メイン / 工程表)の切り替え
-  $("top-tab-main").addEventListener("click", () => {
-    if (activeTopTab === "main") return;
-    // 工程表から抜ける場合は未保存チェック
-    if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
-    activeTopTab = "main";
-    activeViewId = "_main";
-    selectedNodeId = null;
-    render();
-  });
-  $("top-tab-xmind").addEventListener("click", () => {
-    if (activeTopTab === "xmind") return;
-    activeTopTab = "xmind";
-    // 最初の工程表を自動選択(無ければ_main相当の案内が出る)
-    if (mindmaps.length > 0) {
-      activeViewId = mindmaps[0].id;
-    } else {
-      activeViewId = "_main"; // 「未作成」案内表示用
-    }
-    selectedNodeId = null;
-    render();
-  });
-  $("top-tab-templates").addEventListener("click", () => {
-    if (activeTopTab === "templates") return;
-    if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
-    activeTopTab = "templates";
-    activeViewId = "_main";
-    selectedNodeId = null;
-    render();
-  });
-  $("btn-add-template").addEventListener("click", addTemplate);
-
-  // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
-  document.addEventListener("keydown", (e) => {
-    const isMod = e.ctrlKey || e.metaKey;
-    if (!isMod) return;
-    // マインドマップビュー時のみ undo/redo
-    if (activeViewId !== "_main") {
-      // インライン編集中はブラウザのデフォルト(テキスト編集の undo)に任せる
-      if (typeof editingNodeId !== "undefined" && editingNodeId) return;
-      // 入力フィールドにフォーカスがある時もスキップ
-      const tag = (document.activeElement && document.activeElement.tagName) || "";
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-      if (e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undoMm();
-        return;
-      }
-      if ((e.key === "z" && e.shiftKey) || e.key === "y") {
-        e.preventDefault();
-        redoMm();
-        return;
-      }
-    }
-    if (e.key === "s") {
-      if (activeViewId !== "_main" && mmDirty) {
-        e.preventDefault();
-        saveMindmapChanges();
-      }
-    }
-  });
-
-  // ビューバー(メイン)タブの初期描画はrender()で行われる。「メイン」タブクリック用に
-  // 静的なメインタブはビューバー内に動的に追加する設計だが、ImageFlowでは renderViewBar() 内で
-  // 「メイン」タブを左端に常時表示する。
-}
-
-// ---------- 初期化 ----------
-async function init() {
-  $("loading").style.display = "block";
-  $("gallery").innerHTML = "";
-  // 素材除外ボタンの文言・状態を初期化(画像一覧固定)
-  updateViewModeBtns();
-  updateWrapBtn();
-  try {
-    await loadData();
-    render();
-  } catch (err) {
-    $("loading").textContent = "読み込み失敗: " + err.message;
-  }
+/* =========================================================
+   ImageFlow — editorial, calm, production-grade styles
+   ========================================================= */
+
+:root {
+  --bg: #f6f3ec;
+  --bg-2: #eeeae0;
+  --ink: #1b1a17;
+  --ink-soft: #4a4844;
+  --ink-mute: #8a867d;
+  --line: #d9d3c6;
+  --accent: #c8451c;
+  --accent-soft: #e8d7ca;
+  --ok: #2f6d4f;
+  --danger: #a62a2a;
+  --card: #fffdf7;
+  --shadow: 0 1px 0 rgba(27, 26, 23, 0.04), 0 12px 28px -18px rgba(27, 26, 23, 0.3);
+  --radius: 4px;
+  --serif: "Fraunces", "Noto Serif JP", serif;
+  --sans: "Noto Sans JP", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 10% 0%, rgba(200, 69, 28, 0.04), transparent 40%),
+    radial-gradient(circle at 90% 100%, rgba(47, 109, 79, 0.03), transparent 40%);
+  min-height: 100vh;
+}
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, textarea { font-family: inherit; }
+
+/* ========== HEADER ========== */
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 40px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.header-left { display: flex; align-items: center; }
+.logo-full {
+  display: block;
+  height: 43px;
+  width: auto;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.logo-full:hover { opacity: 0.7; }
+.logo-title {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.logo-title:hover { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 18px; }
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-right: 18px;
+  border-right: 1px solid var(--line);
+}
+.stat-num {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.btn-add {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.btn-add:hover { background: var(--accent); }
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 16px;
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.btn-icon:hover { background: var(--bg-2); border-color: var(--ink-soft); }
+
+/* ヘッダー内のラベル付きセカンダリボタン(高さをbtn-addと揃える) */
+.btn-header {
+  margin: 0;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ========== TAB BAR ========== */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  position: sticky;
+  top: 64px;
+  z-index: 48;
+}
+.tab-list {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px 11px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  position: relative;
+}
+.tab-item:hover {
+  color: var(--ink);
+  background: var(--bg-2);
+}
+.tab-item.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+.tab-item-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+.tab-item-name {
+  line-height: 1;
+}
+.tab-item-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  background: var(--bg-2);
+  padding: 2px 6px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+}
+.tab-item.active .tab-item-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tab-item-all {
+  border-right: 1px solid var(--line);
+  margin-right: 8px;
+  padding-right: 20px;
+  font-weight: 600;
+}
+.tab-item-actions {
+  display: none;
+  margin-left: 4px;
+  gap: 2px;
+}
+.tab-item:hover .tab-item-actions,
+.tab-item.active .tab-item-actions {
+  display: inline-flex;
+}
+.tab-mini-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--ink-mute);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tab-mini-btn:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+.btn-tab-add {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  color: var(--ink-mute);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  margin-left: 8px;
+  transition: all 0.15s;
+}
+.btn-tab-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+/* ========== ICON SUGGESTIONS ========== */
+.icon-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.icon-chip {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.icon-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ========== SELECT ========== */
+.select-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.select-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ========== GALLERY ========== */
+main { padding: 32px 40px 80px; }
+.state-msg {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--ink-mute);
+  font-family: var(--serif);
+  font-size: 18px;
+  font-style: italic;
+}
+.empty-illust {
+  font-family: var(--serif);
+  font-size: 28px;
+  color: var(--accent);
+  margin-bottom: 18px;
+  letter-spacing: 0.3em;
+}
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--ink-soft);
+}
+.card-img {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  flex-shrink: 0;
+  background: var(--bg-2);
+  overflow: hidden;
+  position: relative;
+}
+/* aspect-ratioが効かない古いブラウザのフォールバック */
+@supports not (aspect-ratio: 1 / 1) {
+  .card-img {
+    height: 0;
+    padding-top: 100%;
+  }
+  .card-img img {
+    position: absolute;
+    inset: 0;
+  }
+}
+.card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.4s ease;
+}
+.card-img img[data-loading] {
+  opacity: 0;
+}
+.card-img img:not([src]), .card-img img[src=""] {
+  opacity: 0;
+}
+.card-img::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 24px; height: 24px;
+  margin: -12px 0 0 -12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  opacity: 0.7;
+}
+.card-img:has(img[src]:not([src=""])):not(:has(img[data-loading]))::before {
+  display: none;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========== VERSION BADGE ========== */
+.version-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  background: var(--bg-2);
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.card:hover .card-img img { transform: scale(1.04); }
+.card-body { padding: 12px 14px 14px; }
+.card-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+  margin: 0 0 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-title-placeholder {
+  color: var(--ink-mute);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* データ種別ラベル(一覧&詳細共通) - ブランドの煉瓦色で目立たせる */
+.title-header {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* データ種別管理:色見本スウォッチ */
+.head-color-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+/* 色パレットポップアップ */
+.color-picker-popup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 4px 0;
+}
+.color-picker-popup .color-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.color-picker-popup .color-swatch:hover {
+  transform: scale(1.15);
+}
+.color-picker-popup .color-swatch.selected {
+  border-color: var(--ink);
+  transform: scale(1.1);
+}
+.card-prompt {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  letter-spacing: 0.04em;
+  margin-top: 8px;
+}
+.card-model { text-transform: uppercase; }
+.card-category {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* ========== TEXT-ONLY CARD ========== */
+.card-text-main {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 100%);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 16px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-text-main-inner {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 9;
+  -webkit-box-orient: vertical;
+  text-align: left;
+}
+.card-text-main::before {
+  content: "✎";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  opacity: 0.6;
+}
+
+.field-hint kbd {
+  font-family: var(--mono);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin: 0 1px;
+}
+
+/* ========== MODAL ========== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 26, 23, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-inner {
+  background: var(--card);
+  border-radius: 6px;
+  padding: 36px 40px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.4);
+}
+.modal-inner.wide { max-width: 680px; }
+.modal-inner.extra-wide { max-width: 1100px; padding: 32px 36px; }
+.modal-inner.detail { max-width: 1300px; padding: 36px; }
+
+/* ========== FORM 2-COLUMN LAYOUT ========== */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 28px;
+  margin-top: 8px;
+}
+.form-left, .form-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.form-left textarea#input-prompt,
+.form-left textarea#edit-prompt,
+.form-right textarea#input-prompt,
+.form-right textarea#edit-prompt {
+  height: 240px;
+  min-height: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  resize: none;
+}
+.modal-inner h2 {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 26px;
+  color: var(--ink-soft);
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+.modal-close:hover { background: var(--bg-2); }
+
+/* 詳細モーダル:右上に編集・削除・閉じるをまとめて配置 */
+.detail-top-actions {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+}
+.detail-top-actions .modal-close {
+  position: static;
+  top: auto;
+  right: auto;
+}
+.detail-top-actions .btn-secondary,
+.detail-top-actions .btn-danger {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12.5px;
+}
+
+/* ========== AUTH MODAL ========== */
+.auth-modal { background: var(--bg); backdrop-filter: none; }
+.auth-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+}
+.auth-desc {
+  color: var(--ink-soft);
+  margin: 0 0 24px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.auth-help {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  line-height: 1.7;
+  margin: 10px 0 22px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+}
+.auth-error {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin-top: 10px;
+  min-height: 16px;
+}
+.auth-advanced {
+  margin: 4px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 0 12px;
+}
+.auth-advanced summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  padding: 10px 0;
+  list-style: none;
+  user-select: none;
+}
+.auth-advanced summary::-webkit-details-marker { display: none; }
+.auth-advanced summary::before {
+  content: "▸ ";
+  color: var(--ink-mute);
+}
+.auth-advanced[open] summary::before { content: "▾ "; }
+.auth-advanced summary:hover { color: var(--ink); }
+.auth-advanced .field-label:first-of-type { margin-top: 0; }
+.auth-advanced .field-label { margin-top: 12px; }
+.auth-advanced input { margin-bottom: 8px; }
+
+/* ========== FORM ========== */
+.field-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin: 16px 0 6px;
+}
+.required { color: var(--accent); }
+input[type="text"], input[type="password"], textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13.5px;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* ========== TAG INPUT (チップ式) ========== */
+.tag-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  min-height: 40px;
+  transition: border-color 0.15s;
+}
+.tag-input-wrap:focus-within { border-color: var(--accent); }
+.tag-input-chips {
+  display: contents;
+}
+.tag-chip-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tag-chip-input-remove {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.tag-chip-input-remove:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.tag-input-field {
+  flex: 1;
+  min-width: 120px;
+  padding: 4px 6px !important;
+  border: none !important;
+  background: transparent !important;
+  font-size: 12.5px;
+  outline: none;
+}
+.tag-input-field:focus { border: none !important; }
+
+/* ========== TAG PICKER (選択式) ========== */
+.tag-picker-wrap {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px;
+  min-height: 44px;
+}
+.tag-picker-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.tag-picker-selected:empty {
+  display: none;
+}
+.tag-picker-toggle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tag-picker-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+}
+.tag-picker-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.2);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.tag-picker-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag-picker-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.tag-picker-option:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.tag-picker-option.selected {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.tag-picker-option.selected::before {
+  content: "✓ ";
+  font-weight: bold;
+}
+.tag-picker-empty {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+}
+
+/* 選択済みタグチップ(ピッカーの上に並ぶもの) */
+.tag-picker-selected .tag-chip-input {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* ========== TAG MANAGER ========== */
+.tag-mgr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.tag-mgr-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.tag-mgr-item-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink);
+}
+.tag-mgr-item-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+  padding: 2px 7px;
+  background: var(--bg-2);
+  border-radius: 999px;
+}
+.tag-mgr-edit-input {
+  flex: 1;
+  padding: 4px 8px !important;
+  font-size: 13px;
+}
+.tag-mgr-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.tag-mgr-btn:hover {
+  background: var(--bg-2);
+}
+.tag-mgr-btn.danger:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.tag-mgr-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--ink-mute);
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* カードのタグ表示 */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.card-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-soft);
+  background: var(--bg-2);
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 11px 22px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+  margin-top: 20px;
+}
+.btn-primary:hover { background: var(--accent); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary {
+  padding: 11px 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  transition: all 0.15s;
+}
+.btn-secondary:hover { background: var(--bg-2); }
+.btn-danger {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--danger);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: all 0.15s;
+}
+.btn-danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+}
+.save-status {
+  margin-top: 12px;
+  font-size: 12.5px;
+  min-height: 18px;
+  text-align: right;
+  font-family: var(--mono);
+}
+.save-status.ok { color: var(--ok); }
+.save-status.err { color: var(--danger); }
+
+/* ========== DROPZONE ========== */
+.dropzone {
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg);
+}
+.dropzone:hover, .dropzone.drag {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.dz-icon { font-size: 36px; color: var(--accent); margin-bottom: 8px; }
+.dz-text { color: var(--ink-soft); font-size: 13px; }
+.dz-text span { font-size: 11.5px; color: var(--ink-mute); }
+
+/* ========== SUB DROPZONE ========== */
+.sub-dropzone {
+  padding: 18px 12px;
+  margin-top: 2px;
+}
+.sub-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  min-height: 0;
+}
+.sub-preview-item {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.sub-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sub-preview-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  background: rgba(27, 26, 23, 0.75);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sub-preview-remove:hover { background: var(--danger); }
+.sub-preview-uploading {
+  position: absolute;
+  inset: 0;
+  background: rgba(246, 243, 236, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--ink-mute);
+}
+.field-hint {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+/* ========== DETAIL SUB IMAGES ========== */
+.detail-sub-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
+  gap: 6px;
+}
+.detail-sub-images img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.detail-sub-images img:hover { transform: scale(1.03); }
+
+/* ========== COLLAPSIBLE PROMPT ========== */
+.prompt-collapsible {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.prompt-collapsible summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  list-style: none;
+}
+.prompt-collapsible summary::-webkit-details-marker { display: none; }
+.prompt-collapsible .prompt-summary-label::before {
+  content: "▸ ";
+  color: var(--ink-mute);
+  margin-right: 4px;
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.prompt-collapsible[open] .prompt-summary-label::before {
+  content: "▾ ";
+}
+.prompt-collapsible summary:hover .prompt-summary-label {
+  color: var(--ink);
+}
+.prompt-collapsible pre {
+  margin-top: 8px;
+}
+
+.preview-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+  background: var(--bg);
+}
+.preview-wrap img {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 2px;
+  margin-bottom: 10px;
+}
+#preview-clear {
+  font-size: 12px;
+  color: var(--ink-mute);
+  text-decoration: underline;
+}
+
+/* ========== EDIT PREVIEW ========== */
+.edit-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  margin-top: 4px;
+}
+.edit-preview img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--bg-2);
+}
+.edit-preview-note {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ========== DETAIL ========== */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 30px;
+}
+.detail-img-wrap {
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-height: 78vh;
+}
+.detail-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.detail-text-main {
+  padding: 32px 28px;
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.85;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+.detail-info { display: flex; flex-direction: column; overflow: hidden; }
+.detail-title {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+.detail-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.chip {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-mute);
+  margin: 16px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.btn-copy {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  padding: 3px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+.btn-copy:hover { background: var(--accent); color: var(--bg); }
+.btn-copy.copied { background: var(--ok); border-color: var(--ok); color: #fff; }
+.prompt-box {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  background: var(--bg);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+}
+/* 10行分の高さで固定+スクロール */
+.prompt-box-scroll {
+  height: 240px;
+  max-height: 240px;
+}
+.detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-tag {
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg-2);
+  border-radius: 999px;
+  color: var(--ink-soft);
+}
+.detail-category-name {
+  display: inline-block;
+  padding: 5px 14px;
+  font-family: var(--serif);
+  font-size: 13px;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.note-text {
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 900px) {
+  .form-grid { grid-template-columns: 1fr; gap: 16px; }
+  .form-left textarea#input-prompt,
+  .form-left textarea#edit-prompt { min-height: 180px; }
+}
+@media (max-width: 720px) {
+  .site-header { padding: 8px 20px; }
+  .logo-title { font-size: 20px; }
+  .tab-bar { padding: 0 16px; top: 50px; }
+  .tab-item { padding: 10px 12px 9px; font-size: 12px; }
+  main { padding: 20px; }
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .modal-inner { padding: 24px 20px; }
+  .modal-inner.detail { padding: 20px; }
+  .modal-inner.extra-wide { padding: 24px 20px; }
+  .detail-grid { grid-template-columns: 1fr; }
+  .field-row { grid-template-columns: 1fr; }
+  .detail-top-actions { top: 10px; right: 12px; gap: 4px; }
+  .detail-top-actions .btn-secondary,
+  .detail-top-actions .btn-danger { padding: 6px 10px; font-size: 11px; }
+  .stat { display: none; }
+}
+
+/* ========== ImageFlow v1.1: 商品カード/詳細 追加スタイル ========== */
+/* 画像なしカード */
+.card-noimg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-mute);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+}
+/* カードのスタート日付 */
+.card-start-date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+/* CSVバッジ */
+.card-csv-badge {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-soft);
+  background: var(--bg-2);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+/* 追加フォームのCSVプレビュー */
+.csv-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.csv-filename {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  word-break: break-all;
+}
+.csv-clear {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.csv-clear:hover { background: var(--danger); color: #fff; }
+
+/* ========== 商品詳細モーダル ========== */
+.product-detail {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 30px;
+  margin-top: 8px;
+}
+.product-detail-img-wrap {
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+.product-detail-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.product-detail-noimg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 200px;
+  color: var(--ink-mute);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 16px;
+}
+.product-detail-info {
+  display: flex;
+  flex-direction: column;
+}
+.product-detail-date {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.product-detail-name {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.csv-download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: background 0.15s;
+  word-break: break-all;
+}
+.csv-download-link:hover { background: var(--accent); }
+
+@media (max-width: 720px) {
+  .product-detail { grid-template-columns: 1fr; gap: 16px; }
+}
+
+/* ========== ImageFlow v1.2: 商品編集ページ ========== */
+.modal-inner.editor {
+  max-width: 1560px;
+  width: 98vw;
+  height: 95vh;          /* 高さを固定して内側でスクロール制御。情報量を増やすため画面いっぱいに近い */
+  max-height: 95vh;
+  padding: 0;            /* パディングは各エリアで個別に持たせる */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;      /* パネル自体はスクロールしない */
+}
+
+/* 編集ページ: 左右2カラムレイアウト(残り高さいっぱい) */
+.editor-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 24px;
+  align-items: stretch;
+  flex: 1;               /* ボタン帯の下、残り高さを全部使う */
+  min-height: 0;         /* gridの子をoverflowさせるのに必須 */
+  padding: 0 24px 0;
+}
+.editor-col-left {
+  display: flex;
+  flex-direction: column;
+  /* 固定(スクロールしない)。長い場合だけ自分でスクロール */
+  overflow-y: auto;
+  padding: 24px 0 28px;
+}
+.editor-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;      /* ★ここ(セクション群)だけがスクロールする */
+  padding: 24px 8px 28px 0;
+}
+.editor-head-img {
+  position: relative;
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 1/1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor-head-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.editor-img-change {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  background: rgba(27,26,23,0.8);
+  color: #fff;
+  font-size: 11px;
+  border-radius: 999px;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.editor-img-change:hover { background: var(--accent); }
+/* v3.30.0: メイン画像右上の削除ボタン */
+.editor-img-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background: rgba(27,26,23,0.75);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  z-index: 2;
+}
+.editor-img-remove:hover { background: var(--accent); }
+.editor-head-info { display: flex; flex-direction: column; }
+.editor-inline-input {
+  font-size: 14px;
+}
+.editor-name-input {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+}
+.editor-csv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.editor-csv-none {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+}
+.editor-csv-btn {
+  padding: 7px 14px;
+  font-size: 12px;
+  margin: 0;
+}
+
+/* セクション群 */
+.editor-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.editor-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--bg);
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.editor-section-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 右側ボタン列(× ↑ ↓ の縦並び) */
+.editor-section-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  margin-left: 4px;
+}
+.editor-section-side .sec-remove-item,
+.editor-section-side .sec-move {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.editor-section-side .sec-remove-item:hover,
+.editor-section-side .sec-move:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.editor-section-side .sec-move:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.editor-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 10px;
+}
+/* v3.9.0: タイトル無しヘッダー(操作ボタンだけを右寄せ) */
+.editor-section-head-notitle {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.editor-section-title {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  position: relative;
+  padding-left: 12px;
+}
+.editor-section-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.editor-section-actions { display: flex; gap: 6px; }
+/* セクション内 画像 */
+.sec-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sec-img-item {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.sec-img-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+  display: block;
+}
+.sec-img-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  background: rgba(27,26,23,0.75);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sec-img-remove:hover { background: var(--danger); }
+
+/* セクション内 テキスト */
+.sec-texts { display: flex; flex-direction: column; gap: 8px; }
+.sec-text-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+/* v3.13.0: 1行テキスト入力欄(その場編集)。長文は横にはみ出さず途中まで表示 */
+.sec-text-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 9px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-overflow: ellipsis;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+/* ポインタを乗せたら背景を白くして浮き出させる */
+.sec-text-input:hover {
+  background: #ffffff;
+  border-color: var(--ink-mute);
+  box-shadow: 0 1px 4px rgba(27,26,23,0.08);
+}
+.sec-text-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: var(--accent);
+}
+/* 「編集」ボタン(大きい画面を開く) */
+.sec-text-edit, .sec-text-copy, .sec-text-txt {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--card);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sec-text-edit:hover, .sec-text-copy:hover, .sec-text-txt:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+/* コピー・txt成功時の一瞬の表示 */
+.sec-text-copy.copied, .sec-text-txt.copied {
+  background: var(--ok);
+  color: #fff;
+  border-color: var(--ok);
+}
+.sec-text-area {
+  flex: 1;
+  resize: vertical;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.8;
+  min-height: 200px;
+  background: #ffffff;
+}
+/* v3.9.0: テキストは1行プレビュー(クリックで全画面エディタ) */
+/* v3.11.0: 確実に1行省略させるため詳細度を上げ !important で強制 */
+.sec-texts .sec-text-item .sec-text-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.7;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  cursor: text;
+  /* 1行に省略(強制) */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-height: 2.7em;  /* 念のため高さも1行分に制限 */
+  transition: border-color 0.15s, background 0.15s;
+}
+.sec-text-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.7;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  cursor: text;
+  /* 1行に省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sec-text-preview:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-text-preview-empty {
+  color: var(--ink-mute);
+  font-style: italic;
+}
+.sec-text-remove {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.15s;
+  margin-top: 2px;
+}
+.sec-text-remove:hover { background: var(--danger); color: #fff; }
+.sec-empty {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+}
+
+/* ライトボックス */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(27,26,23,0.88);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+/* ライトボックス前後送り(v3.4.0) */
+.lightbox .lightbox-main-img {
+  max-width: 78vw;
+  position: relative;
+  z-index: 2;
+}
+/* × 閉じる(右上) */
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  z-index: 10;
+}
+.lightbox-close:hover { background: var(--accent); transform: scale(1.06); }
+/* カウンター(上中央) */
+.lightbox-counter {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: rgba(27,26,23,0.55);
+  padding: 6px 16px;
+  border-radius: 999px;
+  z-index: 10;
+  pointer-events: none;
+}
+/* 前後送りボタン(左右、薄いプレビュー画像つき) */
+.lightbox-nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18vw;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  z-index: 5;
+  overflow: hidden;
+}
+.lightbox-nav-prev { left: 0; justify-content: flex-start; }
+.lightbox-nav-next { right: 0; justify-content: flex-end; }
+.lightbox-side-img {
+  max-width: 14vw;
+  max-height: 60vh;
+  object-fit: contain;
+  opacity: 0.22;
+  border-radius: var(--radius);
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: none !important;
+}
+.lightbox-nav:hover .lightbox-side-img { opacity: 0.5; }
+.lightbox-side-img[src=""], .lightbox-side-img:not([src]) { display: none; }
+/* 矢印 */
+.lightbox-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 56px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.lightbox-nav-prev .lightbox-arrow { left: 18px; }
+.lightbox-nav-next .lightbox-arrow { right: 18px; }
+.lightbox-nav:hover .lightbox-arrow { opacity: 1; }
+/* 送り先が無いときはボタンを隠す */
+.lightbox-nav.disabled { display: none; }
+@media (max-width: 720px) {
+  .lightbox .lightbox-main-img { max-width: 88vw; }
+  .lightbox-side-img { display: none !important; }
+  .lightbox-nav { width: 64px; min-width: 64px; background: rgba(27,26,23,0.25); }
+  .lightbox-arrow { font-size: 40px; }
+}
+
+@media (max-width: 720px) {
+  /* スマホは1カラム。固定スクロール構造を解除し、パネル全体が縦スクロール */
+  .modal-inner.editor {
+    height: auto;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: block;
+  }
+  .editor-action-bar { position: sticky; top: 0; z-index: 20; }
+  .editor-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    display: grid;
+    padding: 0 18px 24px;
+    min-height: 0;
+  }
+  .editor-col-left { overflow: visible; padding: 8px 0 0; }
+  .editor-col-right { overflow: visible; padding: 0; }
+  .editor-head-img { max-width: 220px; margin: 0 auto; }
+  .sec-img-item { width: 100px; height: 100px; }
+}
+
+/* ========== ImageFlow v3.6.0: 編集ページ上部の固定ボタン帯 ========== */
+/* 役割: 保存=保存だけ / 保存×=保存して閉じる / ×=保存せず閉じる */
+/* パネル最上部に不透明な帯として固定。スクロールしない(本体は右カラムが動く)。 */
+.editor-action-bar {
+  flex-shrink: 0;        /* 縮まない固定ヘッダー */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
+}
+.editor-act-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 44px;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.14);
+  transition: background 0.15s, transform 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.editor-act-btn:hover { transform: scale(1.05); }
+/* 保存だけ(継続) - 落ち着いたインク色 */
+.editor-act-save {
+  padding: 0 20px;
+  background: var(--ink);
+  color: #fff;
+}
+.editor-act-save:hover { background: var(--accent); }
+/* 保存して閉じる - アクセントのレンガ色で主アクション感 */
+.editor-act-save-close {
+  padding: 0 18px;
+  background: var(--accent);
+  color: #fff;
+}
+.editor-act-save-close:hover { background: #a8380f; }
+.editor-act-save-close .act-x {
+  font-size: 17px;
+  margin-left: 2px;
+  opacity: 0.9;
+}
+/* 保存せず閉じる - 控えめな白丸 */
+.editor-act-close {
+  width: 44px;
+  padding: 0;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 22px;
+  border: 1px solid var(--line);
+}
+.editor-act-close:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+@media (max-width: 720px) {
+  .editor-action-bar {
+    padding: 12px 18px;
+    gap: 6px;
+  }
+  .editor-act-btn {
+    height: 40px;
+    font-size: 13px;
+  }
+  .editor-act-save { padding: 0 14px; }
+  .editor-act-save-close { padding: 0 13px; }
+  .editor-act-close { width: 40px; font-size: 20px; }
+}
+
+/* ========== ImageFlow v1.6: テキスト拡大/縮小トグル ========== */
+/* テキスト欄の右のボタン群(拡大・削除を縦に) */
+.sec-text-btns {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sec-text-expand {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.sec-text-expand:hover {
+  background: var(--accent);
+  color: #fff;
+}
+/* 拡大状態のテキストエリア(その場拡大は廃止、オーバーレイ方式に変更) */
+.sec-text-area.expanded {
+  min-height: 200px;
+  font-size: 14px;
+}
+
+/* 左カラム: 商品名下の削除ボタン(復活) */
+.editor-left-actions { margin-top: 14px; }
+.editor-left-actions .btn-danger { padding: 7px 14px; font-size: 12px; }
+
+/* v3.38.0: 設定モーダル(⚙) */
+.settings-inner {
+  max-width: 480px;
+  width: 92vw;
+}
+.settings-body {
+  padding: 16px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-item {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.settings-item-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.settings-item-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.settings-item-danger:hover {
+  border-color: #c2185b;
+  background: #fde2eb;
+}
+.settings-item-danger:hover .settings-item-main { color: #c2185b; }
+
+/* v3.39.3: 接続リセットは目立たないフッター配置に */
+.settings-footer {
+  padding: 8px 24px 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.settings-danger-link {
+  font-size: 11px;
+  color: var(--ink-mute);
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.settings-danger-link:hover {
+  color: #c2185b;
+  text-decoration-color: #c2185b;
+}
+
+/* タグ編集モーダル */
+.tag-settings-inner {
+  max-width: 1100px;
+  width: 95vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.tag-settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tag-settings-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  background: var(--bg);
+}
+.tag-group-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--card);
+}
+.tag-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tag-group-head .tag-group-name-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+}
+.tag-group-head .tag-group-name-input:hover { background: var(--bg-2); }
+.tag-group-head .tag-group-name-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.tag-group-head-actions {
+  display: flex;
+  gap: 4px;
+}
+.tag-group-move {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.tag-group-move:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.tag-group-move:disabled { opacity: 0.3; cursor: not-allowed; }
+.tag-group-remove {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid #f8bbd0;
+  border-radius: 4px;
+  background: #fde2eb;
+  color: #c2185b;
+}
+.tag-group-remove:hover { background: #c2185b; color: #fff; border-color: #c2185b; }
+.tag-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 6px;
+}
+.tag-row:hover { background: var(--bg-2); }
+.tag-row .tag-name-input {
+  width: 110px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--sans);
+  flex-shrink: 0;
+}
+.tag-row .tag-name-input:focus { border-color: var(--accent); outline: none; }
+
+/* 色選択(クリックで開閉のドロップダウン式) */
+.tag-color-picker {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.tag-color-current {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.tag-color-current:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.tag-color-picker.open .tag-color-current {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.tag-color-dropdown {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  display: none;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  z-index: 100;
+  width: 188px;
+}
+.tag-color-picker.open .tag-color-dropdown { display: flex; }
+.tag-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.15s;
+}
+.tag-color-swatch:hover { transform: scale(1.15); }
+.tag-color-swatch.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--card);
+}
+.tag-row-remove {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tag-row-remove:hover { border-color: #c2185b; color: #c2185b; background: #fde2eb; }
+.tag-add-row {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  width: 100%;
+}
+.tag-add-row:hover { border-color: var(--accent); color: var(--accent); border-style: solid; }
+
+/* v3.36.0→v3.38.0: タグ選択UI(編集ページ) + トップ画面ラベル */
+.editor-tags {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.editor-tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.editor-tag-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.editor-tag-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.editor-tag-btn {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border: 1px solid;
+  border-radius: 999px;
+  transition: filter 0.15s;
+  cursor: pointer;
+}
+.editor-tag-btn:hover { filter: brightness(0.92); }
+
+/* トップ画面のタグラベル: グループ別に行分け */
+.row-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+.row-tag-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.row-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ========== ImageFlow v1.9: 全画面テキストエディタ ========== */
+.text-fullscreen {
+  position: fixed;
+  inset: 0;
+  background: rgba(27,26,23,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+}
+.text-fullscreen-inner {
+  background: var(--card);
+  border-radius: 8px;
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.text-fullscreen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.text-fullscreen-title {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  position: relative;
+  padding-left: 14px;
+}
+.text-fullscreen-title::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 5px; height: 20px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.text-fullscreen-close {
+  padding: 9px 24px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.text-fullscreen-close:hover { background: var(--accent); }
+.text-fullscreen-area {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  padding: 28px 32px !important;
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.9;
+  resize: none;
+  width: 100%;
+}
+.text-fullscreen-area:focus { outline: none; }
+
+/* ========== ImageFlow v2.0: 項目の質問文 ========== */
+/* 項目管理: 項目アイテムを縦構成に */
+.section-mgr-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.section-mgr-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-mgr-question {
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: var(--bg-2);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  line-height: 1.6;
+}
+.section-mgr-noq {
+  color: var(--ink-mute);
+  font-style: italic;
+}
+.section-mgr-q-input {
+  width: 100%;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+.section-mgr-q-btns {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* 商品ページ: セクションの質問文ガイド */
+.sec-question {
+  font-size: 13px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+
+/* ========== ImageFlow v2.1: 商品ページで質問文編集 ========== */
+.sec-question {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.sec-question:hover {
+  background: var(--bg-2);
+}
+.sec-question-edit {
+  font-size: 11px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.sec-question-empty {
+  color: var(--ink-mute);
+  background: var(--bg-2);
+  font-style: italic;
+}
+.sec-question-empty:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sec-question-input {
+  width: 100%;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 6px;
+  background: #ffffff;
+}
+.sec-question-btns {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.sec-q-save, .sec-q-cancel {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  transition: all 0.15s;
+}
+.sec-q-save {
+  background: var(--ink);
+  color: #fff;
+}
+.sec-q-save:hover { background: var(--accent); }
+.sec-q-cancel {
+  background: var(--card);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.sec-q-cancel:hover { background: var(--bg-2); }
+
+/* ========== ImageFlow v2.2: 質問文を雛形に戻すボタン ========== */
+.sec-q-reset {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink-mute);
+  border: 1px solid var(--line);
+  transition: all 0.15s;
+}
+.sec-q-reset:hover { background: var(--bg-2); color: var(--ink); }
+
+/* ========== ImageFlow v2.3: 画像一覧表示モード ========== */
+.gallery-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.gallery-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  padding: 16px 8px;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+.gallery-row:hover {
+  background: var(--bg-2);
+}
+.row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: sticky;
+  left: 0;
+}
+.row-start-date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+.row-name {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.row-open-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.row-open-btn:hover { background: var(--accent); }
+/* デフォルト(1行モード): 折り返さず横スクロール。1商品=横1行 */
+.row-thumbs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+/* 全体表示モード: 折り返して全画像を一覧。サムネも少し小さく一覧性UP */
+.gallery-wrap .row-thumbs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.gallery-wrap .row-thumb {
+  width: 64px;
+  height: 105px; /* 64 * 1230/750 ≒ 105 (縦長比率を維持) */
+}
+/* thumb-tall(詳細度が高い)に確実に勝たせる */
+.gallery-rows.thumb-tall.gallery-wrap .row-thumb {
+  width: 64px;
+  height: 105px;
+}
+.row-thumb {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-2);
+  cursor: zoom-in;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.row-thumb:hover {
+  transform: scale(1.04);
+  border-color: var(--accent);
+}
+.row-noimg {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+  padding: 8px 0;
+}
+@media (max-width: 720px) {
+  .gallery-row { grid-template-columns: 1fr; }
+  .row-info { position: static; }
+  .row-thumb { width: 70px; height: 70px; }
+}
+
+/* ========== ImageFlow v2.4: 項目ごとの画像ドロップゾーン ========== */
+.sec-dropzone {
+  width: 100px;
+  height: 100px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--ink-mute);
+  background: var(--bg);
+  transition: all 0.15s;
+  flex-shrink: 0;
+  text-align: center;
+}
+.sec-dropzone:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-dropzone.drag {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  transform: scale(1.02);
+}
+.sec-dropzone-icon { font-size: 20px; line-height: 1; }
+.sec-dropzone-text { font-size: 10px; line-height: 1.4; padding: 0 6px; }
+
+/* v3.13.0→v3.14.0: 空エリアのアップロード口。横長バーをやめ、
+   小さめサイズで他の要素(ファイルチップ等)の隣に横並びさせる。
+   縦に伸びてスクロールが増えるのを防ぐ。 */
+.sec-dropzone.sec-dropzone-bar {
+  width: 150px;
+  height: 72px;
+  flex-direction: column;
+  gap: 4px;
+  border-width: 1px;
+}
+.sec-dropzone.sec-dropzone-bar .sec-dropzone-icon { font-size: 18px; }
+.sec-dropzone.sec-dropzone-bar .sec-dropzone-text { font-size: 11px; padding: 0; }
+
+@media (max-width: 720px) {
+  .sec-dropzone { width: 100px; height: 100px; }
+  .sec-dropzone.sec-dropzone-bar { width: 130px; height: 72px; }
+}
+
+/* ========== ImageFlow v2.5: 項目の追加/削除 ========== */
+/* 項目ごとの×(項目削除) */
+.sec-remove-item {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  margin-left: 4px;
+}
+.sec-remove-item:hover { background: var(--danger); color: #fff; }
+
+/* +項目を追加エリア */
+.sec-add-item-area {
+  margin-top: 8px;
+  position: relative;
+}
+.sec-add-item-btn {
+  width: 100%;
+  padding: 14px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--sans);
+  transition: all 0.15s;
+}
+.sec-add-item-btn:hover {
+  border-style: solid;
+  color: #fff;
+  background: var(--accent);
+}
+.sec-add-item-menu {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  box-shadow: 0 8px 24px -12px rgba(0,0,0,0.25);
+}
+.sec-add-item-option {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.sec-add-item-option:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.sec-add-item-empty {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+  padding: 8px;
+}
+
+/* ========== ImageFlow v2.6: 項目の上下並べ替え ========== */
+.sec-move {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+.sec-move:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.sec-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ========== ImageFlow v2.7: 項目管理モーダルを大きく ========== */
+.modal-inner.section-mgr-big {
+  max-width: 1100px;
+  width: 92vw;
+  min-height: 80vh;
+  padding: 40px 48px;
+}
+/* 項目リストの各行を大きく */
+.section-mgr-big .section-mgr-item {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  background: var(--bg);
+}
+.section-mgr-big .section-mgr-main {
+  gap: 10px;
+}
+.section-mgr-big .tag-mgr-item-name {
+  font-size: 17px;
+  font-weight: 600;
+}
+.section-mgr-big .tag-mgr-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.section-mgr-big .section-mgr-question {
+  font-size: 13px;
+  padding: 12px 16px;
+}
+.section-mgr-big #section-mgr-new-name {
+  font-size: 15px;
+  padding: 12px 16px;
+}
+.section-mgr-big .section-mgr-q-input {
+  font-size: 14px;
+  min-height: 70px;
+}
+
+/* ========== ImageFlow v2.8: 項目内のファイル(非画像) ========== */
+.sec-file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-width: 240px;
+}
+.sec-file-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sec-file-link:hover { color: var(--accent); }
+.sec-file-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sec-file-remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.sec-file-remove:hover { background: var(--danger); color: #fff; }
+
+/* ========== ImageFlow v3.0: 項目タイトルのインライン編集 ========== */
+.editor-section-title[data-iid] {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.editor-section-title[data-iid]:hover { color: var(--accent); }
+/* v3.7.0: 名前未入力の項目タイトル(プレースホルダ表示) */
+.editor-section-title.sec-title-empty {
+  color: var(--ink-mute);
+  font-style: italic;
+  font-weight: 400;
+}
+.sec-title-edit {
+  font-size: 11px;
+  opacity: 0.4;
+  font-weight: 400;
+}
+.editor-section-title[data-iid]:hover .sec-title-edit { opacity: 0.8; }
+.sec-title-input {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  padding: 4px 10px;
+  width: auto;
+  min-width: 200px;
+  background: #fff;
+}
+.sec-title-btns {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.sec-title-save, .sec-title-cancel, .sec-title-reset {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.sec-title-save { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sec-title-save:hover { background: var(--accent); border-color: var(--accent); }
+.sec-title-cancel:hover, .sec-title-reset:hover { background: var(--bg-2); color: var(--ink); }
+
+/* ========== ImageFlow v3.1: 素材/完成品の2エリア ========== */
+/* v3.16.0: 素材・完成品エリアを「画像5個ぴったり」の固定幅に。
+   画像100px×5 + gap10px×4 + パディング12px×2 = 564px。
+   1fr(伸縮)だと右側に余白が出るため固定幅にして左寄せ。 */
+/* v3.16.0→v3.16.2: 素材・完成品エリアを「画像5個ぴったり」の固定幅に。
+   中身: 画像100px×5 + gap10px×4 = 540px。
+   sec-side: padding12px×2 + border1px×2 = 26px。合計 約566px(570pxで4px余裕)。
+   (border-box計算で2px不足し5個目が折り返していたのを修正) */
+.sec-dual {
+  display: grid;
+  grid-template-columns: 570px 570px;
+  justify-content: start;
+  gap: 12px;
+  margin-bottom: 0;
+}
+.sec-side {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg);
+  min-width: 0;
+}
+.sec-side-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.sec-side .sec-images {
+  margin-bottom: 0;
+}
+/* v3.4.0: 素材ラベル行(ラベル + 「右上の完成品を使用」ボタン) */
+.sec-side-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sec-side-label-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sec-use-final, .sec-use-top, .sec-use-topall {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.sec-use-final:hover, .sec-use-topall:hover {
+  border-color: var(--ink-soft);
+  background: var(--bg-2);
+  color: var(--ink);
+}
+/* 「上部の情報を使用」ボタン: 完成品用とほぼ同じ配色 */
+.sec-use-top {
+  color: var(--ink-soft);
+  border-color: var(--line);
+  background: var(--card);
+}
+.sec-use-top:hover {
+  border-color: var(--ink-soft);
+  background: var(--bg-2);
+  color: var(--ink);
+}
+/* ⇔ 反対側へ移動ボタン */
+.sec-swap {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  background: rgba(27,26,23,0.72);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sec-swap:hover { background: var(--accent); }
+/* ファイルチップ内の⇔位置調整 */
+.sec-file-item { position: relative; }
+.sec-file-item .sec-swap {
+  position: static;
+  width: 20px;
+  height: 20px;
+  background: var(--card);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.sec-file-item .sec-swap:hover { background: var(--accent); color: #fff; }
+/* v3.16.0→v3.16.2: 固定566px×2が入りきらない狭い画面でだけ縦積みに */
+@media (max-width: 1300px) {
+  .sec-dual { grid-template-columns: 570px; }
+}
+@media (max-width: 720px) {
+  .sec-dual { grid-template-columns: 1fr; justify-content: stretch; }
+}
+
+/* ========== ImageFlow v3.2: 画像一覧のサムネ高さ切り替え ========== */
+/* 縦長表示(750x1230比率、画像全体が見える=contain) */
+.gallery-rows.thumb-tall .row-thumb {
+  width: 88px;
+  height: 144px; /* 88 * 1230/750 ≒ 144 */
+  object-fit: contain;
+  background: var(--bg-2);
+}
+
+/* v3.21.0: 1行表示時のページ送り(1-15 / 16-30 …) */
+.gallery-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 8px 4px;
+  margin-top: -20px;
+}
+.gallery-pager .pager-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-right: 2px;
+}
+.gallery-pager .pager-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--card);
+  transition: all 0.15s;
+}
+.gallery-pager .pager-btn:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+.gallery-pager .pager-btn.active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+/* v3.31.0: 「完成品を表示中」モード専用の並び替えボタン(画像下に←→) */
+.row-thumb-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.row-thumb-arrows {
+  display: flex;
+  gap: 4px;
+}
+.row-thumb-arrow {
+  width: 24px;
+  height: 20px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.row-thumb-arrow:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.row-thumb-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* v3.35.0: 容量確認モーダル */
+.storage-inner {
+  max-width: 640px;
+  width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.storage-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+.storage-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.storage-section:last-child { border-bottom: none; }
+.storage-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.storage-big {
+  font-family: var(--serif);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.storage-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.storage-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.storage-bar-fill.ok { background: var(--ok); }
+.storage-bar-fill.warn { background: #d49434; }
+.storage-bar-fill.danger { background: var(--accent); }
+.storage-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.storage-note-warn { color: #b3771a; }
+.storage-note-danger { color: var(--accent); font-weight: 600; }
+.storage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+}
+.storage-row .storage-label {
+  margin-bottom: 0;
+  text-transform: none;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 500;
+}
+.storage-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+.storage-table td {
+  padding: 6px 4px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.storage-rank {
+  width: 24px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+}
+.storage-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 380px;
+  color: var(--ink);
+}
+.storage-size {
+  text-align: right;
+  font-family: var(--mono);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.storage-footer {
+  padding: 16px 32px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+}
+.storage-footer button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.storage-footer-note {
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-style: italic;
+}
+/* v3.26.0: 3択ラジオ(素材を表示中/除外中/完成品を表示中) */
+.view-mode-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.view-mode-btn {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid var(--line) !important;
+  margin: 0;
+}
+.view-mode-btn:last-child { border-right: none !important; }
+.view-mode-btn.active {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
+.view-mode-btn.active:hover {
+  background: var(--ink) !important;
+}
+
+/* 完成品画像のチェックボックス(左下に表示) */
+.sec-img-check {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  z-index: 2;
+}
+.sec-img-check:hover { background: #fff; border-color: var(--accent); }
+.sec-img-check-input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: var(--ok);
+}
+/* チェック済みの完成品画像は緑枠で強調 */
+.sec-img-item.checked {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px var(--ok);
+}
+/* v3.20.0: 2段表示(上=状態 / 下=小さい切り替え案内)。素材・全体表示の両ボタン */
+#btn-exclude-material, #btn-wrap-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  gap: 1px;
+}
+.btn-2line-main { font-size: 12px; font-weight: 600; }
+.btn-2line-sub { font-size: 9px; opacity: 0.6; font-weight: 400; }
+/* v3.4.0: アクティブ状態のトーンを落とす(派手なオレンジ→落ち着いたインク系) */
+.btn-header.active {
+  background: var(--bg-2);
+  color: var(--ink);
+  border-color: var(--ink-soft);
+  font-weight: 500;
+}
+.btn-header.active:hover {
+  background: var(--line);
+}
+
+
+/* ============================================== */
+/* v3.42.0: テンプレ機能 */
+/* ============================================== */
+
+/* 2段目バー(テンプレタブ時) */
+.templates-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 8px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.templates-bar-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.templates-tab-list {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.template-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 200px;
+  transition: all 0.15s;
+}
+.template-tab > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.template-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.template-tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.template-tab.active:hover {
+  background: var(--ink);
+  color: #fff;
+}
+
+/* テンプレ一覧 */
+#templates-view {
+  padding: 0;
+  margin-top: -20px;
+}
+.templates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 4px 24px;
+}
+.template-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.template-card:hover {
+  border-color: var(--ink-soft);
+}
+.template-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.template-card-head .template-card-actions {
+  margin-left: auto;
+}
+.template-title-input {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 360px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+}
+.template-title-input:hover { background: var(--bg-2); }
+.template-title-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.template-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.template-act {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.template-act:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.template-act:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.template-act.danger:hover {
+  border-color: #c2185b;
+  color: #c2185b;
+  background: #fde2eb;
+}
+.template-act.copied {
+  background: #2f6d4f;
+  color: #fff !important;
+  border-color: #2f6d4f !important;
+}
+/* 保存ボタン: 少し目立たせる */
+.template-act.template-save {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.template-act.template-save:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
+/* v3.42.1: 本文を左右2カラム(ポイント/全文)に分割 */
+.template-body-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.template-body-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.template-body-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.template-body-input {
+  width: 100%;
+  height: 280px;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: none;
+  line-height: 1.6;
+}
+.template-body-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+
+/* ============================================== */
+/* v3.41.0: 2段ナビバー(メイン/工程表 + タグフィルタ) */
+/* ============================================== */
+
+/* 1段目: メイン/工程表のタブ */
+.top-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 40px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 63px;
+  z-index: 50;
+}
+.top-tab {
+  padding: 12px 28px 11px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--serif);
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.top-tab:hover {
+  color: var(--ink);
+}
+.top-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* 2段目: タグフィルタ(メインタブ時) - 「全て」の右側にグループを横並び */
+.tag-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  padding: 8px 0;
+}
+.tag-filter-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.tag-filter-group-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tag-filter-group-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.tag-filter-row-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tag-filter-btn {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: filter 0.15s, background 0.15s, color 0.15s;
+}
+.tag-filter-btn:hover { filter: brightness(0.95); }
+/* 「全て」ボタン: 黒active */
+.tag-filter-all.active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+.view-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  position: sticky;
+  top: 110px;
+  z-index: 49;
+}
+.view-list {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.view-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 9px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: var(--serif);
+  font-weight: 500;
+}
+.view-item:hover {
+  color: var(--ink);
+  background: var(--bg);
+}
+.view-item.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--bg);
+}
+.view-item-icon { font-size: 14px; }
+.view-item-main {
+  font-weight: 700;
+}
+.view-item-actions {
+  display: none;
+  margin-left: 4px;
+  gap: 2px;
+  align-items: center;
+}
+.view-item:hover .view-item-actions,
+.view-item.active .view-item-actions {
+  display: inline-flex;
+}
+.view-item-empty {
+  padding: 10px 16px 9px;
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-style: italic;
+  font-family: var(--serif);
+}
+
+/* ========== MINDMAP (XMind風 横方向ツリー) ========== */
+
+#mindmap-view {
+  margin-top: -20px;
+}
+.mindmap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mindmap-title {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+}
+.mindmap-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mindmap-help {
+  font-size: 11px;
+  color: var(--ink-mute);
+  background: var(--bg);
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.mindmap-help kbd {
+  font-family: var(--mono);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin: 0 1px;
+}
+.mindmap-canvas {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 40px 30px;
+  min-height: calc(100vh - 240px);
+  height: calc(100vh - 240px);
+  overflow: auto;
+  position: relative;
+  user-select: none;
+}
+/* ドラッグ矩形選択ボックス */
+.mm-selection-box {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: rgba(200, 69, 28, 0.08);
+  pointer-events: none;
+  z-index: 10;
+}
+/* 複数選択中のノード(選択ハイライト) */
+.mm-node-row.multi-selected {
+  border-color: var(--accent);
+  background: rgba(200, 69, 28, 0.15);
+  box-shadow: 0 0 0 2px rgba(200, 69, 28, 0.3);
+}
+
+/* ドラッグ中のノード(元位置を薄く) */
+.mm-node-row.dragging {
+  opacity: 0.4;
+}
+/* ドロップ先候補:子として追加(ホバー時) */
+.mm-node-row.drop-target-into {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-soft);
+}
+/* ドロップ先候補:兄弟として追加(前後にライン表示) */
+.mm-node-row.drop-target-before::before,
+.mm-node-row.drop-target-after::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  z-index: 5;
+}
+.mm-node-row.drop-target-before::before { top: -5px; }
+.mm-node-row.drop-target-after::after { bottom: -5px; }
+/* ドラッグ中のゴースト(マウスに付いてくる小さなプレビュー) */
+.mm-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  padding: 4px 12px;
+  background: var(--card);
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink);
+  opacity: 0.9;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  white-space: nowrap;
+}
+.mm-tree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding-top: 0;
+  padding-left: 25%;
+  min-height: 100%;
+  min-width: 100%;
+  width: max-content;
+  box-sizing: border-box;
+}
+
+/* SVGコネクター(背景レイヤー) */
+.mm-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+.mm-svg path {
+  fill: none;
+  stroke: #6a8caf;
+  stroke-width: 1.5;
+}
+
+/* ノード共通 */
+.mm-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  z-index: 1;
+}
+.mm-node-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  background: #fff;
+  border: 1.5px solid #6a8caf;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2a4a6e;
+  transition: all 0.15s;
+  min-height: 32px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+.mm-node-row:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.mm-node-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px rgba(200, 69, 28, 0.2);
+}
+
+/* ルート(最も左、楕円形) */
+.mm-node-root > .mm-node-row {
+  background: #d6e4f5;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 14px 28px;
+  min-height: 50px;
+}
+
+/* 第1階層(主トピック) */
+.mm-node-l1 > .mm-node-row {
+  background: #eaf0fb;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+/* 第2階層以降(サブトピック) */
+.mm-node-l2 > .mm-node-row,
+.mm-node-l3 > .mm-node-row,
+.mm-node-l4 > .mm-node-row {
+  background: #fff;
+  border: 0;
+  border-bottom: 1.5px solid #6a8caf;
+  border-radius: 0;
+  padding: 4px 12px 4px 4px;
+}
+
+/* 子ノードコンテナ(縦に積む) */
+.mm-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mm-children.collapsed { display: none; }
+
+/* 折りたたみトグル */
+.mm-toggle {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 1.5px solid #6a8caf;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: #6a8caf;
+  cursor: pointer;
+  user-select: none;
+  z-index: 3;
+}
+.mm-toggle:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.mm-node-text { user-select: none; outline: none; padding: 0 4px; }
+.mm-node-text[contenteditable="true"] {
+  background: #fff;
+  border-bottom: 1px solid var(--accent);
+  cursor: text;
+}
+
+.mm-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ink-mute);
+  font-style: italic;
+}
+
+.field-hint kbd {
+  font-family: var(--mono);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin: 0 1px;
+}
+
+.tag-mgr-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.tag-mgr-btn:hover {
+  background: var(--bg-2);
+}
+.tag-mgr-btn.danger:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.tag-mgr-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--ink-mute);
+  font-style: italic;
+  font-size: 13px;
 }
-
-(function start() {
-  bindEvents();
-  closeAllModals();
-  auth = loadAuth();
-  if (auth) {
-    $("auth-modal").style.display = "none";
-    init();
-  } else {
-    $("auth-modal").style.display = "flex";
-  }
-})();
