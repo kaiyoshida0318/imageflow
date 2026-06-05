@@ -3393,14 +3393,6 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 #templates-view {
   padding: 0;
 }
-.templates-header {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 12px 24px 0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
 .templates-list {
   display: flex;
   flex-direction: column;
@@ -3425,10 +3417,14 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 8px;
   margin-bottom: 10px;
 }
+.template-card-head .template-card-actions {
+  margin-left: auto;
+}
 .template-title-input {
-  flex: 1;
+  flex: 0 1 auto;
   width: auto;
   min-width: 0;
+  max-width: 360px;
   font-size: 14px;
   font-weight: 600;
   padding: 6px 10px;
@@ -3473,6 +3469,17 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   background: #2f6d4f;
   color: #fff !important;
   border-color: #2f6d4f !important;
+}
+/* 保存ボタン: 少し目立たせる */
+.template-act.template-save {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.template-act.template-save:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff !important;
+  border-color: var(--accent) !important;
 }
 
 /* v3.42.1: 本文を左右2カラム(ポイント/全文)に分割 */
