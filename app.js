@@ -69,7 +69,8 @@ let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
 let mindmaps = [];      // マインドマップ [{id, name, root}]
-let templates = [];     // テンプレ [{id, title, body}]
+let templates = [];     // テンプレ [{id, title, body, bodyFull}]
+let activeTemplateId = null; // 選択中のテンプレID
 let activeViewId = "_main"; // "_main" or mindmap.id
 let activeTopTab = "main"; // "main" or "xmind" or "templates"
 let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
@@ -580,45 +581,97 @@ function renderTagFilterBar() {
 // テンプレ機能
 // ==============================================
 
-// テンプレ一覧をカード形式で描画
+// テンプレ一覧をタブ式に描画。タブで1つ選択→下に中身を表示。
 function renderTemplates() {
+  // タブバーを描画
+  renderTemplatesTabBar();
   const wrap = $("templates-list");
+  // テンプレが0個
   if (templates.length === 0) {
-    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">📝</div><p>テンプレがまだありません。<br>右上の <b>+</b> から追加しましょう。</p></div>';
+    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">📝</div><p>テンプレがまだありません。<br>上の <b>+</b> から追加しましょう。</p></div>';
     return;
   }
-  const cards = templates.map((t, i) => {
+  // activeTemplateIdが無効なら最初のテンプレを選択
+  if (!activeTemplateId || !templates.find((x) => x.id === activeTemplateId)) {
+    activeTemplateId = templates[0].id;
+  }
+  const t = templates.find((x) => x.id === activeTemplateId);
+  if (!t) {
+    wrap.innerHTML = "";
+    return;
+  }
+  // 選択中のテンプレ1個だけ表示
+  wrap.innerHTML = `
+    <div class="template-card" data-id="${escapeHtml(t.id)}">
+      <div class="template-card-head">
+        <input type="text" class="template-title-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.title || "")}" placeholder="タイトル" />
+        <div class="template-card-actions">
+          <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
+          <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
+          <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">× 削除</button>
+        </div>
+      </div>
+      <div class="template-body-split">
+        <div class="template-body-col">
+          <label class="template-body-label">ポイント</label>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に">${escapeHtml(t.body || "")}</textarea>
+        </div>
+        <div class="template-body-col">
+          <label class="template-body-label">全文</label>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.bodyFull || "")}</textarea>
+        </div>
+      </div>
+    </div>`;
+  bindTemplatesEvents();
+}
+
+// テンプレタブバーの描画
+function renderTemplatesTabBar() {
+  const wrap = $("templates-tab-list");
+  if (!wrap) return;
+  const tabs = templates.map((t, i) => {
+    const isActive = activeTemplateId === t.id;
+    const label = (t.title && t.title.trim()) || "(無題)";
     return `
-      <div class="template-card" data-id="${escapeHtml(t.id)}">
-        <div class="template-card-head">
-          <input type="text" class="template-title-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.title || "")}" placeholder="タイトル(無題でもOK)" />
-          <div class="template-card-actions">
-            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
-            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
-            <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="up" title="上へ" ${i === 0 ? "disabled" : ""}>↑</button>
-            <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="down" title="下へ" ${i === templates.length - 1 ? "disabled" : ""}>↓</button>
-            <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">×</button>
-          </div>
-        </div>
-        <div class="template-body-split">
-          <div class="template-body-col">
-            <label class="template-body-label">ポイント</label>
-            <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に">${escapeHtml(t.body || "")}</textarea>
-          </div>
-          <div class="template-body-col">
-            <label class="template-body-label">全文</label>
-            <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.bodyFull || "")}</textarea>
-          </div>
-        </div>
+      <div class="template-tab ${isActive ? 'active' : ''}" data-id="${escapeHtml(t.id)}">
+        <span>${escapeHtml(label)}</span>
+        <span class="view-item-actions">
+          ${i > 0 ? `<button class="tab-mini-btn" data-action="left" data-tpl-id="${escapeHtml(t.id)}" title="左へ">◀</button>` : ''}
+          ${i < templates.length - 1 ? `<button class="tab-mini-btn" data-action="right" data-tpl-id="${escapeHtml(t.id)}" title="右へ">▶</button>` : ''}
+        </span>
       </div>`;
   }).join("");
-  wrap.innerHTML = cards;
-  bindTemplatesEvents();
+  wrap.innerHTML = tabs;
+  // タブクリック
+  wrap.querySelectorAll(".template-tab").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".tab-mini-btn")) return;
+      const id = el.dataset.id;
+      if (id === activeTemplateId) return;
+      activeTemplateId = id;
+      renderTemplates();
+    });
+  });
+  // ◀▶ で並び替え
+  wrap.querySelectorAll(".tab-mini-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.tplId;
+      const dir = btn.dataset.action;
+      const i = templates.findIndex((x) => x.id === id);
+      if (i === -1) return;
+      const j = dir === "left" ? i - 1 : i + 1;
+      if (j < 0 || j >= templates.length) return;
+      [templates[i], templates[j]] = [templates[j], templates[i]];
+      saveTemplates();
+      renderTemplatesTabBar();
+    });
+  });
 }
 
 function bindTemplatesEvents() {
   const wrap = $("templates-list");
-  // タイトル編集(blur保存)
+  // タイトル編集(blur保存) → タブのラベルも更新
   wrap.querySelectorAll(".template-title-input").forEach((inp) => {
     inp.addEventListener("blur", () => {
       const t = templates.find((x) => x.id === inp.dataset.id);
@@ -626,6 +679,7 @@ function bindTemplatesEvents() {
       if (t.title === inp.value) return;
       t.title = inp.value;
       saveTemplates();
+      renderTemplatesTabBar(); // タブのラベルを更新
     });
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   });
@@ -634,7 +688,7 @@ function bindTemplatesEvents() {
     ta.addEventListener("blur", () => {
       const t = templates.find((x) => x.id === ta.dataset.id);
       if (!t) return;
-      const field = ta.dataset.field; // "body" or "bodyFull"
+      const field = ta.dataset.field;
       if (t[field] === ta.value) return;
       t[field] = ta.value;
       saveTemplates();
@@ -667,49 +721,44 @@ function bindTemplatesEvents() {
       }
     });
   });
-  // 並び替え
-  wrap.querySelectorAll(".template-move").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.id;
-      const dir = btn.dataset.dir;
-      const i = templates.findIndex((x) => x.id === id);
-      if (i === -1) return;
-      const j = dir === "up" ? i - 1 : i + 1;
-      if (j < 0 || j >= templates.length) return;
-      [templates[i], templates[j]] = [templates[j], templates[i]];
-      saveTemplates();
-      renderTemplates();
-    });
-  });
-  // 削除
+  // 削除(現在のテンプレ)
   wrap.querySelectorAll(".template-remove").forEach((btn) => {
     btn.addEventListener("click", () => {
       const t = templates.find((x) => x.id === btn.dataset.id);
       if (!t) return;
       const label = (t.title && t.title.trim()) || "(無題)";
       if (!confirm(`テンプレ「${label}」を削除しますか?`)) return;
+      const i = templates.findIndex((x) => x.id === t.id);
       templates = templates.filter((x) => x.id !== t.id);
+      // 削除後の選択を妥当な位置に
+      if (templates.length === 0) {
+        activeTemplateId = null;
+      } else {
+        const newIdx = Math.min(i, templates.length - 1);
+        activeTemplateId = templates[newIdx].id;
+      }
       saveTemplates();
       renderTemplates();
     });
   });
 }
 
-// 新規テンプレを追加(リストの先頭に)
+// 新規テンプレを追加(リストの末尾に)
 function addTemplate() {
   const newT = {
     id: "tpl-" + genId(),
-    title: "",
+    title: "新しいテンプレ",
     body: "",
     bodyFull: ""
   };
-  templates.unshift(newT);
+  templates.push(newT);                // 右側(末尾)に追加
+  activeTemplateId = newT.id;          // 追加したものを自動選択
   saveTemplates();
   renderTemplates();
-  // 追加した最初のテンプレのタイトル入力欄にフォーカス
+  // タイトル入力欄にフォーカス(全選択状態にして即書き換え可能に)
   setTimeout(() => {
     const inp = document.querySelector(`.template-title-input[data-id="${CSS.escape(newT.id)}"]`);
-    if (inp) inp.focus();
+    if (inp) { inp.focus(); inp.select(); }
   }, 50);
 }
 
