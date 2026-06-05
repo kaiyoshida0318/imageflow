@@ -3347,6 +3347,14 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 #templates-view {
   padding: 0;
 }
+.templates-header {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 12px 24px 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .templates-list {
   display: flex;
   flex-direction: column;
@@ -3442,7 +3450,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .template-body-input {
   width: 100%;
-  min-height: 140px;
+  min-height: 280px;
   font-family: var(--mono);
   font-size: 13px;
   padding: 10px 12px;
