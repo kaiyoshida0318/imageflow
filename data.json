@@ -867,5 +867,16 @@
         }
       ]
     }
+  ],
+  "mindmaps": [
+    {
+      "id": "mm-mq08d6jifsqfs4",
+      "name": "mindmap",
+      "root": {
+        "id": "n-mq08d6jilytvdg",
+        "text": "mindmap",
+        "children": []
+      }
+    }
   ]
 }
