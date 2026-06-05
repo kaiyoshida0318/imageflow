@@ -522,7 +522,7 @@ function renderTopTabBar() {
   }
 }
 
-// メインタブ下のタグフィルタバー(「全て」+ グループ別にタグを並べる)
+// メインタブ下のタグフィルタバー(「全て」の右側にグループ別タグを横並びで配置)
 function renderTagFilterBar() {
   const wrap = $("tag-filter-list");
   const tagBtn = (t, active) => {
@@ -532,20 +532,21 @@ function renderTagFilterBar() {
       : `background:#fff;color:${bg};border-color:${bg};`;
     return `<button class="tag-filter-btn${active ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
   };
-  // 「全て」(独立行)
-  const allRow = `<div class="tag-filter-row tag-filter-row-all">
-      <button class="tag-filter-btn tag-filter-all${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>
-    </div>`;
-  // グループ別
-  const groupRows = (tagGroups || []).map((g) => {
+  // グループ別(空グループは省略)
+  const groupBlocks = (tagGroups || []).map((g) => {
     if (!g || !Array.isArray(g.tags) || g.tags.length === 0) return "";
     const btns = g.tags.map((t) => tagBtn(t, activeTagFilter === t.name)).join("");
-    return `<div class="tag-filter-row">
+    return `<div class="tag-filter-group-block">
         <span class="tag-filter-group-label">${escapeHtml(g.name)}:</span>
         <div class="tag-filter-row-btns">${btns}</div>
       </div>`;
   }).join("");
-  wrap.innerHTML = allRow + groupRows;
+  // 「全て」を左端、その右にグループブロックを横並び(画面が狭ければ折り返し)
+  wrap.innerHTML = `
+    <button class="tag-filter-btn tag-filter-all${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>
+    <div class="tag-filter-divider"></div>
+    ${groupBlocks}
+  `;
   // イベントbind
   wrap.querySelectorAll(".tag-filter-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
