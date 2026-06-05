@@ -3393,6 +3393,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* テンプレ一覧 */
 #templates-view {
   padding: 0;
+  margin-top: -20px;
 }
 .templates-list {
   display: flex;
@@ -3400,7 +3401,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 12px;
   max-width: 1500px;
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: 4px 24px;
 }
 .template-card {
   background: var(--card);
@@ -3676,6 +3677,9 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* ========== MINDMAP (XMind風 横方向ツリー) ========== */
 
+#mindmap-view {
+  margin-top: -20px;
+}
 .mindmap-toolbar {
   display: flex;
   align-items: center;
