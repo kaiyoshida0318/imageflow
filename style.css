@@ -3351,7 +3351,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 1100px;
+  max-width: 1500px;
   margin: 0 auto;
   padding: 20px 24px;
 }
@@ -3420,9 +3420,29 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: #fff !important;
   border-color: #2f6d4f !important;
 }
+
+/* v3.42.1: 本文を左右2カラム(ポイント/全文)に分割 */
+.template-body-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.template-body-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.template-body-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
 .template-body-input {
   width: 100%;
-  min-height: 90px;
+  min-height: 140px;
   font-family: var(--mono);
   font-size: 13px;
   padding: 10px 12px;
