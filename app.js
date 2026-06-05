@@ -614,11 +614,11 @@ function renderTemplates() {
       <div class="template-body-split">
         <div class="template-body-col">
           <label class="template-body-label">ポイント</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に">${escapeHtml(t.body || "")}</textarea>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に"${t.bodyHeight ? ` style="height:${parseInt(t.bodyHeight)}px"` : ''}>${escapeHtml(t.body || "")}</textarea>
         </div>
         <div class="template-body-col">
           <label class="template-body-label">全文</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.bodyFull || "")}</textarea>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)"${t.bodyFullHeight ? ` style="height:${parseInt(t.bodyFullHeight)}px"` : ''}>${escapeHtml(t.bodyFull || "")}</textarea>
         </div>
       </div>
     </div>`;
@@ -693,6 +693,35 @@ function bindTemplatesEvents() {
       t[field] = ta.value;
       saveTemplates();
     });
+  });
+  // textareaの高さ変更を検出して保存(ユーザーが右下ハンドルでリサイズ時)
+  // 初期描画直後の発火を無視するため、最初の値を記録してから差分で判定
+  wrap.querySelectorAll(".template-body-input").forEach((ta) => {
+    const t = templates.find((x) => x.id === ta.dataset.id);
+    if (!t) return;
+    const field = ta.dataset.field;
+    const heightField = field === "bodyFull" ? "bodyFullHeight" : "bodyHeight";
+    // 初期高さ(保存値があればそれ、無ければ実測値)
+    let initialHeight = t[heightField] || Math.round(ta.getBoundingClientRect().height);
+    let lastSavedHeight = initialHeight;
+    // デバウンス保存(リサイズ中に大量に発火しないように)
+    let saveTimer = null;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height);
+        if (Math.abs(h - lastSavedHeight) < 4) continue; // 微小差分は無視
+        lastSavedHeight = h;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          const cur = templates.find((x) => x.id === ta.dataset.id);
+          if (!cur) return;
+          if (cur[heightField] === h) return;
+          cur[heightField] = h;
+          saveTemplates();
+        }, 400);
+      }
+    });
+    ro.observe(ta);
   });
   // コピー(data-fieldで body / bodyFull を切替)
   wrap.querySelectorAll(".template-copy").forEach((btn) => {
