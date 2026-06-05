@@ -69,8 +69,9 @@ let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
 let mindmaps = [];      // マインドマップ [{id, name, root}]
+let templates = [];     // テンプレ [{id, title, body}]
 let activeViewId = "_main"; // "_main" or mindmap.id
-let activeTopTab = "main"; // "main" or "xmind" (1段目のタブ)
+let activeTopTab = "main"; // "main" or "xmind" or "templates"
 let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
 let selectedNodeId = null; // 編集中の選択ノード
 let mmDirty = false;       // マインドマップに未保存の変更があるか
@@ -170,6 +171,7 @@ async function loadData() {
   if (res.status === 404) {
     products = [];
     mindmaps = [];
+    templates = [];
     dataSha = null;
     if (tagGroups.length === 0) tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     return;
@@ -182,6 +184,7 @@ async function loadData() {
     sectionDefs = Array.isArray(json.sectionDefs) ? json.sectionDefs : [];
     tagGroups = Array.isArray(json.tagGroups) ? json.tagGroups : [];
     mindmaps = Array.isArray(json.mindmaps) ? json.mindmaps : [];
+    templates = Array.isArray(json.templates) ? json.templates : [];
     // 項目定義が無ければデフォルトで初期化
     if (sectionDefs.length === 0) {
       sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
@@ -198,6 +201,7 @@ async function loadData() {
     sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
     tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     mindmaps = [];
+    templates = [];
   }
 }
 
@@ -272,7 +276,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const body = {
       message: commitMessage,
-      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps }, null, 2)),
+      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps, templates }, null, 2)),
       branch: auth.branch
     };
     if (dataSha) body.sha = dataSha;
@@ -298,6 +302,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
       await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       const mine = products.slice();
       const myMindmaps = mindmaps.slice();
+      const myTemplates = templates.slice();
       await loadData();
       if (mergeFn) {
         products = mergeFn(products);
@@ -308,8 +313,9 @@ async function _saveDataImpl(commitMessage, mergeFn) {
         merged.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
         products = merged;
       }
-      // マインドマップはローカル変更を優先
+      // マインドマップ・テンプレはローカル変更を優先
       mindmaps = myMindmaps;
+      templates = myTemplates;
       continue;
     }
 
@@ -469,6 +475,18 @@ function render() {
   // 1段目タブ + 2段目バー描画
   renderTopTabBar();
 
+  // テンプレモード
+  if (activeTopTab === "templates") {
+    gallery.style.display = "none";
+    $("empty-state").style.display = "none";
+    $("gallery-pager").style.display = "none";
+    $("mindmap-view").style.display = "none";
+    $("templates-view").style.display = "block";
+    renderTemplates();
+    return;
+  }
+  $("templates-view").style.display = "none";
+
   // 工程表モード: マインドマップ画面
   if (activeTopTab === "xmind" && activeViewId !== "_main") {
     gallery.style.display = "none";
@@ -505,21 +523,21 @@ function render() {
 
 // 1段目タブと、その下の2段目バーを描画
 function renderTopTabBar() {
-  // 1段目: メイン / 工程表 のトグル
+  // 1段目: メイン / 工程表 / テンプレ のトグル
   $("top-tab-main").classList.toggle("active", activeTopTab === "main");
   $("top-tab-xmind").classList.toggle("active", activeTopTab === "xmind");
+  $("top-tab-templates").classList.toggle("active", activeTopTab === "templates");
   // 2段目: 1段目の選択によって表示切替
-  if (activeTopTab === "main") {
-    $("tag-filter-list").style.display = "";
-    $("view-list").style.display = "none";
-    $("btn-add-mindmap").style.display = "none";
-    renderTagFilterBar();
-  } else {
-    $("tag-filter-list").style.display = "none";
-    $("view-list").style.display = "";
-    $("btn-add-mindmap").style.display = "";
-    renderViewBar();
-  }
+  const showMain = activeTopTab === "main";
+  const showXmind = activeTopTab === "xmind";
+  const showTemplates = activeTopTab === "templates";
+  $("tag-filter-list").style.display = showMain ? "" : "none";
+  $("view-list").style.display = showXmind ? "" : "none";
+  $("btn-add-mindmap").style.display = showXmind ? "" : "none";
+  $("templates-bar").style.display = showTemplates ? "" : "none";
+  if (showMain) renderTagFilterBar();
+  else if (showXmind) renderViewBar();
+  // テンプレバーは静的なのでrender不要
 }
 
 // メインタブ下のタグフィルタバー(「全て」の右側にグループ別タグを横並びで配置)
@@ -556,6 +574,136 @@ function renderTagFilterBar() {
       render();
     });
   });
+}
+
+// ==============================================
+// テンプレ機能
+// ==============================================
+
+// テンプレ一覧をカード形式で描画
+function renderTemplates() {
+  const wrap = $("templates-list");
+  if (templates.length === 0) {
+    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">📝</div><p>テンプレがまだありません。<br>右上の <b>+</b> から追加しましょう。</p></div>';
+    return;
+  }
+  const cards = templates.map((t, i) => {
+    return `
+      <div class="template-card" data-id="${escapeHtml(t.id)}">
+        <div class="template-card-head">
+          <input type="text" class="template-title-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.title || "")}" placeholder="タイトル(無題でもOK)" />
+          <div class="template-card-actions">
+            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" title="本文をコピー">コピー</button>
+            <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="up" title="上へ" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="down" title="下へ" ${i === templates.length - 1 ? "disabled" : ""}>↓</button>
+            <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">×</button>
+          </div>
+        </div>
+        <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.body || "")}</textarea>
+      </div>`;
+  }).join("");
+  wrap.innerHTML = cards;
+  bindTemplatesEvents();
+}
+
+function bindTemplatesEvents() {
+  const wrap = $("templates-list");
+  // タイトル編集(blur保存)
+  wrap.querySelectorAll(".template-title-input").forEach((inp) => {
+    inp.addEventListener("blur", () => {
+      const t = templates.find((x) => x.id === inp.dataset.id);
+      if (!t) return;
+      if (t.title === inp.value) return;
+      t.title = inp.value;
+      saveTemplates();
+    });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  });
+  // 本文編集(blur保存)
+  wrap.querySelectorAll(".template-body-input").forEach((ta) => {
+    ta.addEventListener("blur", () => {
+      const t = templates.find((x) => x.id === ta.dataset.id);
+      if (!t) return;
+      if (t.body === ta.value) return;
+      t.body = ta.value;
+      saveTemplates();
+    });
+  });
+  // コピー
+  wrap.querySelectorAll(".template-copy").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const t = templates.find((x) => x.id === btn.dataset.id);
+      if (!t) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(t.body || "");
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = t.body || "";
+          ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        const orig = btn.textContent;
+        btn.textContent = "✓";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
+      } catch (e) {
+        alert("コピーに失敗しました: " + e.message);
+      }
+    });
+  });
+  // 並び替え
+  wrap.querySelectorAll(".template-move").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const dir = btn.dataset.dir;
+      const i = templates.findIndex((x) => x.id === id);
+      if (i === -1) return;
+      const j = dir === "up" ? i - 1 : i + 1;
+      if (j < 0 || j >= templates.length) return;
+      [templates[i], templates[j]] = [templates[j], templates[i]];
+      saveTemplates();
+      renderTemplates();
+    });
+  });
+  // 削除
+  wrap.querySelectorAll(".template-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const t = templates.find((x) => x.id === btn.dataset.id);
+      if (!t) return;
+      const label = (t.title && t.title.trim()) || "(無題)";
+      if (!confirm(`テンプレ「${label}」を削除しますか?`)) return;
+      templates = templates.filter((x) => x.id !== t.id);
+      saveTemplates();
+      renderTemplates();
+    });
+  });
+}
+
+// 新規テンプレを追加(リストの先頭に)
+function addTemplate() {
+  const newT = {
+    id: "tpl-" + genId(),
+    title: "",
+    body: ""
+  };
+  templates.unshift(newT);
+  saveTemplates();
+  renderTemplates();
+  // 追加した最初のテンプレのタイトル入力欄にフォーカス
+  setTimeout(() => {
+    const inp = document.querySelector(`.template-title-input[data-id="${CSS.escape(newT.id)}"]`);
+    if (inp) inp.focus();
+  }, 50);
+}
+
+// テンプレ保存(楽観的更新、バックグラウンド保存)
+function saveTemplates() {
+  const localProducts = products.slice();
+  saveData("Update templates", () => localProducts)
+    .catch((err) => alert("テンプレの保存に失敗: " + err.message));
 }
 
 
@@ -3469,6 +3617,15 @@ function bindEvents() {
     selectedNodeId = null;
     render();
   });
+  $("top-tab-templates").addEventListener("click", () => {
+    if (activeTopTab === "templates") return;
+    if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
+    activeTopTab = "templates";
+    activeViewId = "_main";
+    selectedNodeId = null;
+    render();
+  });
+  $("btn-add-template").addEventListener("click", addTemplate);
 
   // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
   document.addEventListener("keydown", (e) => {
