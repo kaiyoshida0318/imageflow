@@ -3505,7 +3505,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .template-body-input {
   width: 100%;
-  min-height: 280px;
+  height: 280px;
   font-family: var(--mono);
   font-size: 13px;
   padding: 10px 12px;
@@ -3513,7 +3513,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-radius: 6px;
   background: var(--bg);
   color: var(--ink);
-  resize: vertical;
+  resize: none;
   line-height: 1.6;
 }
 .template-body-input:focus {
