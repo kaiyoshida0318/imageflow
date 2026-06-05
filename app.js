@@ -609,6 +609,7 @@ function renderTemplates() {
           <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
           <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
           <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">× 削除</button>
+          <button class="template-act template-save" data-id="${escapeHtml(t.id)}" title="現在の内容を保存">💾 保存</button>
         </div>
       </div>
       <div class="template-body-split">
@@ -768,6 +769,28 @@ function bindTemplatesEvents() {
       }
       saveTemplates();
       renderTemplates();
+    });
+  });
+  // 保存(明示的: blur→即保存→✓表示)
+  wrap.querySelectorAll(".template-save").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur();
+      }
+      const orig = btn.textContent;
+      btn.textContent = "保存中…";
+      btn.disabled = true;
+      const localProducts = products.slice();
+      saveData("Save templates (manual)", () => localProducts)
+        .then(() => {
+          btn.textContent = "✓ 保存済み";
+          setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
+        })
+        .catch((err) => {
+          btn.textContent = orig;
+          btn.disabled = false;
+          alert("保存失敗: " + err.message);
+        });
     });
   });
 }
@@ -3718,28 +3741,6 @@ function bindEvents() {
     render();
   });
   $("btn-add-template").addEventListener("click", addTemplate);
-  $("btn-save-templates").addEventListener("click", () => {
-    // フォーカス中の入力欄があれば、blurを先に発火させて最新値を反映
-    if (document.activeElement && document.activeElement.blur) {
-      document.activeElement.blur();
-    }
-    // 即時に明示保存(楽観的: UI即フィードバック、本保存はバックグラウンド)
-    const btn = $("btn-save-templates");
-    const orig = btn.textContent;
-    btn.textContent = "保存中…";
-    btn.disabled = true;
-    const localProducts = products.slice();
-    saveData("Save templates (manual)", () => localProducts)
-      .then(() => {
-        btn.textContent = "✓ 保存済み";
-        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
-      })
-      .catch((err) => {
-        btn.textContent = orig;
-        btn.disabled = false;
-        alert("保存失敗: " + err.message);
-      });
-  });
 
   // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
   document.addEventListener("keydown", (e) => {
