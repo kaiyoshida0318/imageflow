@@ -3640,6 +3640,28 @@ function bindEvents() {
     render();
   });
   $("btn-add-template").addEventListener("click", addTemplate);
+  $("btn-save-templates").addEventListener("click", () => {
+    // フォーカス中の入力欄があれば、blurを先に発火させて最新値を反映
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    // 即時に明示保存(楽観的: UI即フィードバック、本保存はバックグラウンド)
+    const btn = $("btn-save-templates");
+    const orig = btn.textContent;
+    btn.textContent = "保存中…";
+    btn.disabled = true;
+    const localProducts = products.slice();
+    saveData("Save templates (manual)", () => localProducts)
+      .then(() => {
+        btn.textContent = "✓ 保存済み";
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
+      })
+      .catch((err) => {
+        btn.textContent = orig;
+        btn.disabled = false;
+        alert("保存失敗: " + err.message);
+      });
+  });
 
   // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
   document.addEventListener("keydown", (e) => {
