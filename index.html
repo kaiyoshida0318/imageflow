@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.39.4" />
+<link rel="stylesheet" href="style.css?v=3.40.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.39.4</span>
+    <span class="version-badge">v3.40.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -61,6 +61,12 @@
   </div>
 </header>
 
+<!-- ============== ビュー切り替えバー(メイン/工程表) ============== -->
+<nav class="view-bar">
+  <div id="view-list" class="view-list"></div>
+  <button id="btn-add-mindmap" class="btn-tab-add" title="新しい工程表(xmind)を追加">+</button>
+</nav>
+
 <!-- 検索バーは隠しinputとして保持(互換) -->
 <input id="search-input" type="hidden" value="" />
 
@@ -73,6 +79,25 @@
   </div>
   <div id="gallery-pager" class="gallery-pager" style="display:none"></div>
   <div id="gallery" class="gallery"></div>
+
+  <!-- マインドマップ表示エリア -->
+  <div id="mindmap-view" style="display:none">
+    <div class="mindmap-toolbar">
+      <h2 id="mindmap-title" class="mindmap-title"></h2>
+      <div class="mindmap-help">
+        <kbd>Ctrl+Z</kbd> 戻る / <kbd>Ctrl+Shift+Z</kbd> やり直し / <kbd>Enter</kbd> 兄弟 / <kbd>Tab</kbd> 子 / <kbd>Delete</kbd> 削除
+      </div>
+      <div class="mindmap-actions">
+        <button id="btn-mindmap-undo" class="tag-mgr-btn" title="戻る (Ctrl+Z)">↶ 戻る</button>
+        <button id="btn-mindmap-redo" class="tag-mgr-btn" title="やり直し (Ctrl+Shift+Z)">↷ やり直し</button>
+        <button id="btn-mindmap-save" class="tag-mgr-btn" title="現在の変更を保存(Ctrl+S)">💾 保存済み</button>
+        <button id="btn-mindmap-rename" class="tag-mgr-btn">名前変更</button>
+        <button id="btn-mindmap-delete" class="tag-mgr-btn danger">マップを削除</button>
+      </div>
+    </div>
+    <div id="mindmap-canvas" class="mindmap-canvas" tabindex="0"></div>
+    <p class="field-hint" style="margin-top:12px"><kbd>↑↓←→</kbd>移動 / <kbd>Tab</kbd>子追加 / <kbd>Enter</kbd>兄弟追加 / <kbd>F2</kbd>編集 / <kbd>Delete</kbd>削除 / 背景ドラッグで矩形選択 / <kbd>Ctrl+Z</kbd>戻る / <kbd>Ctrl+S</kbd>保存</p>
+  </div>
 </main>
 
 <!-- ============== 追加モーダル(商品登録) ============== -->
@@ -110,7 +135,7 @@
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
   <div class="modal-inner editor">
-    <!-- v3.39.4: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
+    <!-- v3.40.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
     <div id="editor-action-bar" class="editor-action-bar">
       <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
       <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
@@ -233,6 +258,6 @@
 </div>
 
 
-<script src="app.js?v=3.39.4"></script>
+<script src="app.js?v=3.40.0"></script>
 </body>
 </html>
