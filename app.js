@@ -522,24 +522,30 @@ function renderTopTabBar() {
   }
 }
 
-// メインタブ下のタグフィルタバー(全て + tagGroups内のタグ)
+// メインタブ下のタグフィルタバー(「全て」+ グループ別にタグを並べる)
 function renderTagFilterBar() {
   const wrap = $("tag-filter-list");
-  // 「全て」 + tagGroupsから全タグを順番に並べる
-  const allTags = [];
-  for (const g of (tagGroups || [])) {
-    if (Array.isArray(g.tags)) for (const t of g.tags) allTags.push(t);
-  }
-  const allBtn = `<button class="tag-filter-btn${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>`;
-  const tagBtns = allTags.map((t) => {
-    const isActive = activeTagFilter === t.name;
+  const tagBtn = (t, active) => {
     const bg = t.color || "#888";
-    const style = isActive
+    const style = active
       ? `background:${bg};color:#fff;border-color:${bg};`
       : `background:#fff;color:${bg};border-color:${bg};`;
-    return `<button class="tag-filter-btn${isActive ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
+    return `<button class="tag-filter-btn${active ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
+  };
+  // 「全て」(独立行)
+  const allRow = `<div class="tag-filter-row tag-filter-row-all">
+      <button class="tag-filter-btn tag-filter-all${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>
+    </div>`;
+  // グループ別
+  const groupRows = (tagGroups || []).map((g) => {
+    if (!g || !Array.isArray(g.tags) || g.tags.length === 0) return "";
+    const btns = g.tags.map((t) => tagBtn(t, activeTagFilter === t.name)).join("");
+    return `<div class="tag-filter-row">
+        <span class="tag-filter-group-label">${escapeHtml(g.name)}:</span>
+        <div class="tag-filter-row-btns">${btns}</div>
+      </div>`;
   }).join("");
-  wrap.innerHTML = allBtn + tagBtns;
+  wrap.innerHTML = allRow + groupRows;
   // イベントbind
   wrap.querySelectorAll(".tag-filter-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
