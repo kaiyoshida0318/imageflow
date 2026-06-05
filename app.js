@@ -608,6 +608,8 @@ function renderTemplates() {
         <div class="template-card-actions">
           <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
           <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
+          <button class="template-act template-txt" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントを.txtでダウンロード">ポイント.txt</button>
+          <button class="template-act template-txt" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文を.txtでダウンロード">全文.txt</button>
           <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">× 削除</button>
           <button class="template-act template-save" data-id="${escapeHtml(t.id)}" title="現在の内容を保存">💾 保存</button>
         </div>
@@ -749,6 +751,33 @@ function bindTemplatesEvents() {
       } catch (e) {
         alert("コピーに失敗しました: " + e.message);
       }
+    });
+  });
+  // .txt 出力(data-fieldで body / bodyFull を切替)
+  wrap.querySelectorAll(".template-txt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const t = templates.find((x) => x.id === btn.dataset.id);
+      if (!t) return;
+      const field = btn.dataset.field || "body";
+      const text = t[field] || "";
+      const labelTitle = (t.title && t.title.trim()) || "無題";
+      const labelKind = field === "bodyFull" ? "全文" : "ポイント";
+      const filename = `${safeFileName(labelTitle)}-${labelKind}.txt`;
+      // BOM付きUTF-8でダウンロード(Windowsのメモ帳でも文字化けしない)
+      const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // ✓ 表示
+      const orig = btn.textContent;
+      btn.textContent = "✓";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
     });
   });
   // 削除(現在のテンプレ)
