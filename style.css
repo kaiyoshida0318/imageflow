@@ -3358,20 +3358,46 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-bottom-color: var(--accent);
 }
 
-/* 2段目: タグフィルタ(メインタブ時) */
+/* 2段目: タグフィルタ(メインタブ時) - グループ別に縦積み */
 .tag-filter-list {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   flex: 1;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   padding: 8px 0;
+}
+.tag-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tag-filter-row-all {
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+}
+.tag-filter-group-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  min-width: 90px;
+  flex-shrink: 0;
+}
+.tag-filter-row-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
 }
 .tag-filter-btn {
   font-family: var(--sans);
   font-size: 12px;
   font-weight: 600;
-  padding: 5px 14px;
+  padding: 4px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--card);
@@ -3381,7 +3407,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .tag-filter-btn:hover { filter: brightness(0.95); }
 /* 「全て」ボタン: 黒active */
-.tag-filter-btn[data-tag="_all"].active {
+.tag-filter-all.active {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
