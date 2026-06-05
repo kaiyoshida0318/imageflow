@@ -3324,8 +3324,68 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 
 /* ============================================== */
-/* マインドマップ機能 (Prompt Galleryから移植) v3.40 */
+/* v3.41.0: 2段ナビバー(メイン/工程表 + タグフィルタ) */
 /* ============================================== */
+
+/* 1段目: メイン/工程表のタブ */
+.top-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 40px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 63px;
+  z-index: 50;
+}
+.top-tab {
+  padding: 12px 28px 11px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--serif);
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.top-tab:hover {
+  color: var(--ink);
+}
+.top-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* 2段目: タグフィルタ(メインタブ時) */
+.tag-filter-list {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 0;
+}
+.tag-filter-btn {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: filter 0.15s, background 0.15s, color 0.15s;
+}
+.tag-filter-btn:hover { filter: brightness(0.95); }
+/* 「全て」ボタン: 黒active */
+.tag-filter-btn[data-tag="_all"].active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
 
 .view-bar {
   display: flex;
@@ -3337,7 +3397,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   overflow-x: auto;
   scrollbar-width: thin;
   position: sticky;
-  top: 63px;
+  top: 110px;
   z-index: 49;
 }
 .view-list {
