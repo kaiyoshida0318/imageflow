@@ -593,13 +593,23 @@ function renderTemplates() {
         <div class="template-card-head">
           <input type="text" class="template-title-input" data-id="${escapeHtml(t.id)}" value="${escapeHtml(t.title || "")}" placeholder="タイトル(無題でもOK)" />
           <div class="template-card-actions">
-            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" title="本文をコピー">コピー</button>
+            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="body" title="ポイントをコピー">ポイントをコピー</button>
+            <button class="template-act template-copy" data-id="${escapeHtml(t.id)}" data-field="bodyFull" title="全文をコピー">全文をコピー</button>
             <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="up" title="上へ" ${i === 0 ? "disabled" : ""}>↑</button>
             <button class="template-act template-move" data-id="${escapeHtml(t.id)}" data-dir="down" title="下へ" ${i === templates.length - 1 ? "disabled" : ""}>↓</button>
             <button class="template-act template-remove danger" data-id="${escapeHtml(t.id)}" title="このテンプレを削除">×</button>
           </div>
         </div>
-        <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.body || "")}</textarea>
+        <div class="template-body-split">
+          <div class="template-body-col">
+            <label class="template-body-label">ポイント</label>
+            <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に">${escapeHtml(t.body || "")}</textarea>
+          </div>
+          <div class="template-body-col">
+            <label class="template-body-label">全文</label>
+            <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.bodyFull || "")}</textarea>
+          </div>
+        </div>
       </div>`;
   }).join("");
   wrap.innerHTML = cards;
@@ -619,27 +629,30 @@ function bindTemplatesEvents() {
     });
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   });
-  // 本文編集(blur保存)
+  // 本文編集(blur保存) - data-fieldで body / bodyFull を切替
   wrap.querySelectorAll(".template-body-input").forEach((ta) => {
     ta.addEventListener("blur", () => {
       const t = templates.find((x) => x.id === ta.dataset.id);
       if (!t) return;
-      if (t.body === ta.value) return;
-      t.body = ta.value;
+      const field = ta.dataset.field; // "body" or "bodyFull"
+      if (t[field] === ta.value) return;
+      t[field] = ta.value;
       saveTemplates();
     });
   });
-  // コピー
+  // コピー(data-fieldで body / bodyFull を切替)
   wrap.querySelectorAll(".template-copy").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const t = templates.find((x) => x.id === btn.dataset.id);
       if (!t) return;
+      const field = btn.dataset.field || "body";
+      const text = t[field] || "";
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(t.body || "");
+          await navigator.clipboard.writeText(text);
         } else {
           const ta = document.createElement("textarea");
-          ta.value = t.body || "";
+          ta.value = text;
           ta.style.position = "fixed"; ta.style.opacity = "0";
           document.body.appendChild(ta); ta.select();
           document.execCommand("copy");
@@ -687,7 +700,8 @@ function addTemplate() {
   const newT = {
     id: "tpl-" + genId(),
     title: "",
-    body: ""
+    body: "",
+    bodyFull: ""
   };
   templates.unshift(newT);
   saveTemplates();
