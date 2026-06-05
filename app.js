@@ -68,6 +68,14 @@ let dataSha = null;
 let products = [];
 let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
+let mindmaps = [];      // マインドマップ [{id, name, root}]
+let activeViewId = "_main"; // "_main" or mindmap.id
+let selectedNodeId = null; // 編集中の選択ノード
+let mmDirty = false;       // マインドマップに未保存の変更があるか
+let mmHistory = [];        // 履歴スタック(各エントリ:該当マインドマップのJSONスナップショット)
+let mmHistoryIndex = -1;   // 現在の位置(-1=履歴なし)
+let mmHistoryMapId = null; // 現在の履歴が対象としているマップID
+const MM_HISTORY_LIMIT = 50;
 let currentDetailId = null;
 
 // タグ定義のデフォルト(初回起動時 or tagGroupsが空のとき使われる)
@@ -159,6 +167,7 @@ async function loadData() {
   const res = await ghFetch(`contents/${DATA_PATH}?ref=${auth.branch}`);
   if (res.status === 404) {
     products = [];
+    mindmaps = [];
     dataSha = null;
     if (tagGroups.length === 0) tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     return;
@@ -170,6 +179,7 @@ async function loadData() {
     products = Array.isArray(json.products) ? json.products : [];
     sectionDefs = Array.isArray(json.sectionDefs) ? json.sectionDefs : [];
     tagGroups = Array.isArray(json.tagGroups) ? json.tagGroups : [];
+    mindmaps = Array.isArray(json.mindmaps) ? json.mindmaps : [];
     // 項目定義が無ければデフォルトで初期化
     if (sectionDefs.length === 0) {
       sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
@@ -185,6 +195,7 @@ async function loadData() {
     products = [];
     sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
     tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
+    mindmaps = [];
   }
 }
 
@@ -259,7 +270,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const body = {
       message: commitMessage,
-      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups }, null, 2)),
+      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps }, null, 2)),
       branch: auth.branch
     };
     if (dataSha) body.sha = dataSha;
@@ -284,6 +295,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
       // GitHub側の反映ラグを吸収するため少し待つ(回数に応じて伸ばす)
       await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       const mine = products.slice();
+      const myMindmaps = mindmaps.slice();
       await loadData();
       if (mergeFn) {
         products = mergeFn(products);
@@ -294,6 +306,8 @@ async function _saveDataImpl(commitMessage, mergeFn) {
         merged.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
         products = merged;
       }
+      // マインドマップはローカル変更を優先
+      mindmaps = myMindmaps;
       continue;
     }
 
@@ -446,6 +460,22 @@ function render() {
   const gallery = $("gallery");
   $("loading").style.display = "none";
 
+  // ビューバーを描画
+  renderViewBar();
+
+  // マインドマップビューの場合はそれを描画してメイン処理は飛ばす
+  if (activeViewId !== "_main") {
+    gallery.style.display = "none";
+    $("empty-state").style.display = "none";
+    $("gallery-pager").style.display = "none";
+    $("mindmap-view").style.display = "block";
+    renderMindmap();
+    return;
+  }
+  // メインビュー
+  $("mindmap-view").style.display = "none";
+  gallery.style.display = "";
+
   if (products.length === 0) {
     $("empty-state").style.display = "block";
     gallery.innerHTML = "";
@@ -456,6 +486,1009 @@ function render() {
   // v3.8.0: 表示は画像一覧(縦長サムネ)のみ
   renderGalleryView();
 }
+
+
+// ==============================================
+// マインドマップ機能 (Prompt Galleryから移植)
+// ==============================================
+
+// ---------- ビュー切り替えバー(ギャラリー/マインドマップ) ----------
+function renderViewBar() {
+  const viewList = $("view-list");
+  // 「メイン」タブを左端に固定表示
+  const mainHtml = `
+    <div class="view-item view-item-main ${activeViewId === "_main" ? 'active' : ''}" data-view-id="_main">
+      <span class="view-item-icon">🏠</span>
+      <span>メイン</span>
+    </div>`;
+  // 各マインドマップ
+  const mmsHtml = mindmaps.map((m, i) => {
+    const isActive = activeViewId === m.id;
+    return `
+    <div class="view-item ${isActive ? 'active' : ''}" data-view-id="${escapeHtml(m.id)}">
+      <span class="view-item-icon">🗺️</span>
+      <span>${escapeHtml(m.name)}</span>
+      <span class="view-item-actions">
+        ${i > 0 ? `<button class="tab-mini-btn" data-action="left" data-mm-id="${escapeHtml(m.id)}" title="左へ移動">◀</button>` : ''}
+        ${i < mindmaps.length - 1 ? `<button class="tab-mini-btn" data-action="right" data-mm-id="${escapeHtml(m.id)}" title="右へ移動">▶</button>` : ''}
+      </span>
+    </div>
+  `;
+  }).join("");
+  viewList.innerHTML = mainHtml + mmsHtml;
+
+  viewList.querySelectorAll(".view-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      // ミニボタン(並び替え)のクリックは別処理
+      if (e.target.closest(".tab-mini-btn")) return;
+      const target = el.dataset.viewId;
+      if (target === activeViewId) return;
+      // マインドマップから離れる場合は未保存チェック
+      if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
+      activeViewId = target;
+      selectedNodeId = null;
+      render();
+    });
+  });
+
+  // ミニボタン(並び替え)
+  viewList.querySelectorAll(".tab-mini-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const mmId = btn.dataset.mmId;
+      if (action === "left") moveMindmap(mmId, -1);
+      else if (action === "right") moveMindmap(mmId, 1);
+    });
+  });
+}
+
+// マインドマップの並び替え
+async function moveMindmap(mmId, delta) {
+  const idx = mindmaps.findIndex((m) => m.id === mmId);
+  if (idx === -1) return;
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= mindmaps.length) return;
+  const [item] = mindmaps.splice(idx, 1);
+  mindmaps.splice(newIdx, 0, item);
+  try {
+    await saveData(`Reorder mindmap: ${item.name}`);
+    renderViewBar();
+  } catch (err) {
+    alert("並び替え失敗: " + err.message);
+  }
+}
+
+// ---------- マインドマップ操作 ----------
+function makeNewMindmap() {
+  // マインドマップ表示中で未保存なら確認
+  if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
+  const name = prompt("新しいマインドマップの名前を入力", "新しいマップ");
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  const newMm = {
+    id: "mm-" + genId(),
+    name: trimmed,
+    root: {
+      id: "n-" + genId(),
+      text: trimmed,
+      children: []
+    }
+  };
+  mindmaps.push(newMm);
+  saveData(`Add mindmap: ${trimmed}`).then(() => {
+    activeViewId = newMm.id;
+    mmDirty = false;
+    render();
+  }).catch((err) => alert("作成失敗: " + err.message));
+}
+
+function getActiveMindmap() {
+  return mindmaps.find((m) => m.id === activeViewId);
+}
+
+function renderMindmap() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  // 履歴初期化(マップ切り替え時)
+  initMmHistory();
+  $("mindmap-title").textContent = mm.name;
+  // 保存ボタンの状態を反映
+  updateMmSaveButton();
+  const canvas = $("mindmap-canvas");
+  // 初回表示かどうかを判定(マップが切り替わった or 初回)
+  const isFirstRender = canvas.dataset.currentMmId !== mm.id;
+  canvas.dataset.currentMmId = mm.id;
+  // mm-treeコンテナとSVGレイヤーを構築
+  canvas.innerHTML = `
+    <svg class="mm-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="mm-tree">${renderMmNode(mm.root, 0, true)}</div>
+  `;
+  attachMindmapEvents(canvas, mm);
+  // レイアウト確定後にコネクター描画 + 初回ならルートを左中央へ
+  requestAnimationFrame(() => {
+    drawConnectors(mm, canvas);
+    if (isFirstRender) centerRootInCanvas(canvas, mm);
+  });
+}
+
+// ルートノードをキャンバスの「上から0%・左から25%」位置に配置
+function centerRootInCanvas(canvas, mm) {
+  const rootRow = canvas.querySelector(`.mm-node[data-id="${CSS.escape(mm.root.id)}"] > .mm-node-row`);
+  if (!rootRow) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  const rootRect = rootRow.getBoundingClientRect();
+  // ルートの中央座標(canvas相対)
+  const rootCenterX = rootRect.left - canvasRect.left + canvas.scrollLeft + rootRect.width / 2;
+  // 縦は一番上(scrollTop = 0)、横は左25%にルート中央が来るように
+  const targetScrollLeft = rootCenterX - canvas.clientWidth * 0.25;
+  canvas.scrollTo({
+    top: 0,
+    left: Math.max(0, targetScrollLeft),
+    behavior: "auto"
+  });
+}
+
+// ローカル変更を「未保存」扱いにする
+function markMmDirty() {
+  mmDirty = true;
+  updateMmSaveButton();
+}
+
+// ---------- マインドマップ Undo/Redo 履歴 ----------
+// 現在のマインドマップ状態をスナップショット保存
+function pushMmHistory() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  // マップが切り替わったら履歴をリセット
+  if (mmHistoryMapId !== mm.id) {
+    mmHistory = [];
+    mmHistoryIndex = -1;
+    mmHistoryMapId = mm.id;
+  }
+  // redo分があれば破棄
+  if (mmHistoryIndex < mmHistory.length - 1) {
+    mmHistory = mmHistory.slice(0, mmHistoryIndex + 1);
+  }
+  // 深いコピーをスナップショット
+  const snapshot = JSON.stringify({ name: mm.name, root: mm.root });
+  // 直前と同じなら追加しない(連続変更でムダ履歴を防ぐ)
+  if (mmHistory.length > 0 && mmHistory[mmHistory.length - 1] === snapshot) return;
+  mmHistory.push(snapshot);
+  // 上限超えたら古いものを捨てる
+  if (mmHistory.length > MM_HISTORY_LIMIT) {
+    mmHistory.shift();
+  }
+  mmHistoryIndex = mmHistory.length - 1;
+}
+
+// 履歴から復元
+function applyMmHistoryAt(index) {
+  if (index < 0 || index >= mmHistory.length) return;
+  const mm = mindmaps.find((m) => m.id === mmHistoryMapId);
+  if (!mm) return;
+  try {
+    const snap = JSON.parse(mmHistory[index]);
+    mm.name = snap.name;
+    mm.root = snap.root;
+    mmHistoryIndex = index;
+    selectedNodeId = null;
+    multiSelectedIds.clear();
+    markMmDirty();
+    renderViewBar();
+    renderMindmap();
+  } catch (e) {
+    console.error("履歴復元失敗", e);
+  }
+}
+
+function undoMm() {
+  if (mmHistoryIndex > 0) {
+    applyMmHistoryAt(mmHistoryIndex - 1);
+  }
+}
+
+function redoMm() {
+  if (mmHistoryIndex < mmHistory.length - 1) {
+    applyMmHistoryAt(mmHistoryIndex + 1);
+  }
+}
+
+// マインドマップを開いた時、初期スナップショットを保存
+function initMmHistory() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  if (mmHistoryMapId !== mm.id) {
+    mmHistory = [];
+    mmHistoryIndex = -1;
+    mmHistoryMapId = mm.id;
+    // 現状を初期スナップショットとして保存
+    const snapshot = JSON.stringify({ name: mm.name, root: mm.root });
+    mmHistory.push(snapshot);
+    mmHistoryIndex = 0;
+  }
+}
+
+function updateMmSaveButton() {
+  const btn = $("btn-mindmap-save");
+  if (!btn) return;
+  if (mmDirty) {
+    btn.classList.add("btn-primary");
+    btn.classList.remove("tag-mgr-btn");
+    btn.textContent = "💾 保存(未保存あり)";
+    btn.disabled = false;
+  } else {
+    btn.classList.remove("btn-primary");
+    btn.classList.add("tag-mgr-btn");
+    btn.textContent = "💾 保存済み";
+    btn.disabled = true;
+  }
+}
+
+// マインドマップを保存(明示的に押された時のみ)
+async function saveMindmapChanges() {
+  if (!mmDirty) return;
+  const btn = $("btn-mindmap-save");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+  try {
+    await saveData(`Update mindmap`);
+    mmDirty = false;
+    updateMmSaveButton();
+  } catch (err) {
+    alert("保存失敗: " + err.message);
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// 「未保存変更あり」状態でビュー切り替え時の確認
+function confirmDiscardMmChanges() {
+  if (!mmDirty) return true;
+  if (confirm("未保存の変更があります。破棄して移動しますか?\n(キャンセルすると現在の画面に留まります)")) {
+    mmDirty = false;
+    return true;
+  }
+  return false;
+}
+
+function renderMmNode(node, depth, isRoot) {
+  const isSelected = selectedNodeId === node.id;
+  const hasChildren = node.children && node.children.length > 0;
+  const isCollapsed = node._collapsed;
+  const toggleIcon = hasChildren
+    ? `<span class="mm-toggle" data-action="toggle" data-id="${node.id}">${isCollapsed ? '+' : '−'}</span>`
+    : '';
+  const levelClass = isRoot ? 'mm-node-root' : `mm-node-l${Math.min(depth, 4)}`;
+  const childrenHtml = hasChildren && !isCollapsed
+    ? `<div class="mm-children">${node.children.map((c) => renderMmNode(c, depth + 1, false)).join("")}</div>`
+    : '';
+
+  return `
+    <div class="mm-node ${levelClass}" data-id="${node.id}" data-depth="${depth}">
+      <div class="mm-node-row ${isSelected ? 'selected' : ''}" data-id="${node.id}" tabindex="0">
+        <span class="mm-node-text" data-id="${node.id}">${escapeHtml(node.text || '(無題)')}</span>
+        ${toggleIcon}
+      </div>
+      ${childrenHtml}
+    </div>
+  `;
+}
+
+// SVGで親 → 子を曲線で繋ぐ
+function drawConnectors(mm, canvas) {
+  const svg = canvas.querySelector(".mm-svg");
+  if (!svg) return;
+  const tree = canvas.querySelector(".mm-tree");
+  if (!tree) return;
+  // canvas相対座標で計算
+  const canvasRect = canvas.getBoundingClientRect();
+  const scrollLeft = canvas.scrollLeft;
+  const scrollTop = canvas.scrollTop;
+  // SVGの実寸を tree のサイズに合わせる
+  const treeRect = tree.getBoundingClientRect();
+  const svgWidth = Math.max(tree.scrollWidth, canvas.clientWidth);
+  const svgHeight = Math.max(tree.scrollHeight, canvas.clientHeight);
+  svg.setAttribute("width", svgWidth);
+  svg.setAttribute("height", svgHeight);
+
+  const paths = [];
+  function walk(node) {
+    if (!node.children || node._collapsed) return;
+    const parentEl = canvas.querySelector(`.mm-node[data-id="${CSS.escape(node.id)}"] > .mm-node-row`);
+    if (!parentEl) return;
+    const pBox = parentEl.getBoundingClientRect();
+    const px = pBox.right - canvasRect.left + scrollLeft;
+    const py = pBox.top + pBox.height / 2 - canvasRect.top + scrollTop;
+    for (const c of node.children) {
+      const childEl = canvas.querySelector(`.mm-node[data-id="${CSS.escape(c.id)}"] > .mm-node-row`);
+      if (!childEl) continue;
+      const cBox = childEl.getBoundingClientRect();
+      const cx = cBox.left - canvasRect.left + scrollLeft;
+      const cy = cBox.top + cBox.height / 2 - canvasRect.top + scrollTop;
+      // 曲線パス:水平に少し進んで、なめらかに垂直方向に曲げる
+      const midX = (px + cx) / 2;
+      paths.push(`M${px},${py} C${midX},${py} ${midX},${cy} ${cx},${cy}`);
+      walk(c);
+    }
+  }
+  walk(mm.root);
+  svg.innerHTML = paths.map((d) => `<path d="${d}"/>`).join("");
+}
+
+// 編集中フラグ
+let editingNodeId = null;
+let multiSelectedIds = new Set(); // ドラッグで複数選択中のノードID
+
+function attachMindmapEvents(canvas, mm) {
+  // 行クリック=選択(複数選択もクリア)
+  canvas.querySelectorAll(".mm-node-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".mm-toggle")) return;
+      // 編集中のテキストclickは無視
+      if (e.target.matches('.mm-node-text[contenteditable="true"]')) return;
+      const id = row.dataset.id;
+      selectedNodeId = id;
+      // 複数選択クリア
+      clearMultiSelection(canvas);
+      // 選択状態の表示更新(再描画は重いので最低限のクラス更新だけ)
+      canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
+      row.classList.add("selected");
+      row.focus();
+    });
+  });
+
+  // テキストダブルクリック=インライン編集開始
+  canvas.querySelectorAll(".mm-node-text").forEach((txt) => {
+    txt.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      startInlineEdit(txt.dataset.id);
+    });
+  });
+
+  // 折りたたみ
+  canvas.querySelectorAll(".mm-toggle").forEach((tg) => {
+    tg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const node = findMmNode(mm.root, tg.dataset.id);
+      if (node) {
+        node._collapsed = !node._collapsed;
+        renderMindmap();
+      }
+    });
+  });
+
+  // 矩形ドラッグ選択(空エリアからのみ開始可能)
+  if (!canvas._mmDragAttached) {
+    canvas._mmDragAttached = true;
+    attachDragSelection(canvas);
+  }
+  // ノードドラッグ&ドロップで並び替え
+  if (!canvas._mmNodeDragAttached) {
+    canvas._mmNodeDragAttached = true;
+    attachNodeDragAndDrop(canvas);
+  }
+
+  // キーボードイベント(canvas全体)
+  canvas.tabIndex = 0;
+  if (!canvas._mmKeydownAttached) {
+    canvas._mmKeydownAttached = true;
+    canvas.addEventListener("keydown", (e) => {
+      if (editingNodeId) return; // インライン編集中はそちらに任せる
+      // 複数選択中の一括削除
+      if (multiSelectedIds.size > 0 && e.key === "Delete") {
+        e.preventDefault();
+        deleteMultiSelected();
+        return;
+      }
+      if (!selectedNodeId) return;
+      const mmCur = getActiveMindmap();
+      if (!mmCur) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addMmSibling(selectedNodeId);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        addMmChild(selectedNodeId);
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        startInlineEdit(selectedNodeId);
+      } else if (e.key === "Delete") {
+        e.preventDefault();
+        deleteMmNode(selectedNodeId);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        moveSelectionTo(mmCur, "right");
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        moveSelectionTo(mmCur, "left");
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveSelectionTo(mmCur, "down");
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveSelectionTo(mmCur, "up");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        clearMultiSelection(canvas);
+      }
+    });
+  }
+}
+
+// 複数選択クリア
+function clearMultiSelection(canvas) {
+  if (multiSelectedIds.size === 0) return;
+  multiSelectedIds.clear();
+  canvas.querySelectorAll(".mm-node-row.multi-selected").forEach((r) => r.classList.remove("multi-selected"));
+}
+
+// 矩形ドラッグ選択
+function attachDragSelection(canvas) {
+  let dragStart = null; // {x, y, screenX, screenY}
+  let selectionBox = null;
+  let dragMoved = false;
+
+  const onMouseDown = (e) => {
+    if (e.button !== 0) return; // 左クリックのみ
+    // ノード自身からの開始は無視(ノードクリックを邪魔しない)
+    if (e.target.closest(".mm-node-row") || e.target.closest(".mm-toggle")) return;
+    // 矩形選択ボタン以外(キャンバス背景、SVG、mm-tree、mm-children等)から開始
+    const canvasRect = canvas.getBoundingClientRect();
+    dragStart = {
+      x: e.clientX - canvasRect.left + canvas.scrollLeft,
+      y: e.clientY - canvasRect.top + canvas.scrollTop,
+      clientX: e.clientX,
+      clientY: e.clientY
+    };
+    dragMoved = false;
+    // 既存の複数選択&単一選択をクリア
+    clearMultiSelection(canvas);
+    canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
+    selectedNodeId = null;
+    e.preventDefault();
+  };
+
+  const onMouseMove = (e) => {
+    if (!dragStart) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const curX = e.clientX - canvasRect.left + canvas.scrollLeft;
+    const curY = e.clientY - canvasRect.top + canvas.scrollTop;
+    const x = Math.min(dragStart.x, curX);
+    const y = Math.min(dragStart.y, curY);
+    const w = Math.abs(curX - dragStart.x);
+    const h = Math.abs(curY - dragStart.y);
+    // 5px以下のドラッグは無視(誤クリック対策)
+    if (w < 5 && h < 5) return;
+    dragMoved = true;
+
+    if (!selectionBox) {
+      selectionBox = document.createElement("div");
+      selectionBox.className = "mm-selection-box";
+      canvas.appendChild(selectionBox);
+    }
+    selectionBox.style.left = x + "px";
+    selectionBox.style.top = y + "px";
+    selectionBox.style.width = w + "px";
+    selectionBox.style.height = h + "px";
+
+    // 範囲内のノードをハイライト
+    const rect = { left: x, top: y, right: x + w, bottom: y + h };
+    canvas.querySelectorAll(".mm-node-row").forEach((row) => {
+      const rBox = row.getBoundingClientRect();
+      const rLeft = rBox.left - canvasRect.left + canvas.scrollLeft;
+      const rTop = rBox.top - canvasRect.top + canvas.scrollTop;
+      const rRight = rLeft + rBox.width;
+      const rBottom = rTop + rBox.height;
+      const intersect = !(rect.right < rLeft || rect.left > rRight || rect.bottom < rTop || rect.top > rBottom);
+      if (intersect) {
+        row.classList.add("multi-selected");
+        multiSelectedIds.add(row.dataset.id);
+      } else {
+        row.classList.remove("multi-selected");
+        multiSelectedIds.delete(row.dataset.id);
+      }
+    });
+  };
+
+  const onMouseUp = (e) => {
+    if (!dragStart) return;
+    dragStart = null;
+    if (selectionBox) {
+      selectionBox.remove();
+      selectionBox = null;
+    }
+    // 選択があったら canvas にフォーカスを戻して Delete キーを受け取れるように
+    if (multiSelectedIds.size > 0) {
+      canvas.focus({ preventScroll: true });
+    }
+    dragMoved = false;
+  };
+
+  // mousedown は canvas で受ける
+  canvas.addEventListener("mousedown", onMouseDown);
+  // mousemove と mouseup は document で受ける(canvas外までドラッグ可能&ノード上もスキャン継続)
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+}
+
+// ---------- ノードのドラッグ&ドロップで並び替え ----------
+function attachNodeDragAndDrop(canvas) {
+  let dragNodeId = null;
+  let dragStartPos = null; // {x, y}
+  let isDragging = false;
+  let ghostEl = null;
+  let lastDropInfo = null; // {targetId, position: 'into'|'before'|'after'}
+
+  const onMouseDown = (e) => {
+    if (e.button !== 0) return;
+    // ノードの上でだけ反応
+    const row = e.target.closest(".mm-node-row");
+    if (!row) return;
+    // ボタン類は無視
+    if (e.target.closest(".mm-node-btn") || e.target.closest(".mm-toggle")) return;
+    // contenteditableな要素(編集中)は無視
+    if (e.target.matches('[contenteditable="true"]')) return;
+    dragNodeId = row.dataset.id;
+    dragStartPos = { x: e.clientX, y: e.clientY };
+    isDragging = false;
+    // ここではpreventDefaultしない:クリック扱いも残したいので
+  };
+
+  const onMouseMove = (e) => {
+    if (!dragNodeId) return;
+    // 開始位置から5px以上動いたらドラッグ開始
+    const dx = e.clientX - dragStartPos.x;
+    const dy = e.clientY - dragStartPos.y;
+    if (!isDragging && Math.hypot(dx, dy) > 5) {
+      // ルートはドラッグ不可
+      const mm = getActiveMindmap();
+      if (mm && dragNodeId === mm.root.id) {
+        dragNodeId = null;
+        return;
+      }
+      isDragging = true;
+      // 編集中はキャンセル
+      if (editingNodeId) {
+        dragNodeId = null;
+        isDragging = false;
+        return;
+      }
+      // 元ノードを薄く
+      const sourceRow = canvas.querySelector(`.mm-node-row[data-id="${CSS.escape(dragNodeId)}"]`);
+      if (sourceRow) sourceRow.classList.add("dragging");
+      // ゴースト作成
+      const node = findMmNode(mm.root, dragNodeId);
+      if (node) {
+        ghostEl = document.createElement("div");
+        ghostEl.className = "mm-drag-ghost";
+        ghostEl.textContent = node.text || "(無題)";
+        document.body.appendChild(ghostEl);
+      }
+      document.body.style.cursor = "grabbing";
+    }
+    if (!isDragging) return;
+
+    // ゴースト位置更新
+    if (ghostEl) {
+      ghostEl.style.left = (e.clientX + 12) + "px";
+      ghostEl.style.top = (e.clientY + 12) + "px";
+    }
+
+    // 直下のターゲットを判定(ゴーストはpointer-events:none)
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    // 前回のハイライトクリア
+    clearDropHints(canvas);
+    if (!target) {
+      lastDropInfo = null;
+      return;
+    }
+    const targetRow = target.closest(".mm-node-row");
+    if (!targetRow || targetRow.dataset.id === dragNodeId) {
+      lastDropInfo = null;
+      return;
+    }
+    const targetId = targetRow.dataset.id;
+    // 自分の子孫の中にはドロップ不可(ループ防止)
+    if (isDescendant(dragNodeId, targetId)) {
+      lastDropInfo = null;
+      return;
+    }
+    // ターゲット行内のどこにマウスがあるかで判定
+    const rBox = targetRow.getBoundingClientRect();
+    const offsetY = e.clientY - rBox.top;
+    const offsetX = e.clientX - rBox.left;
+    let position;
+    const mm = getActiveMindmap();
+    const isRoot = mm && targetId === mm.root.id;
+    if (isRoot) {
+      // ルートは "into"(子追加)しか許可しない
+      position = "into";
+    } else {
+      // 右半分にドロップ → 子追加
+      // 縦的にノードのど真ん中(縦25%~75%)にあれば子追加(重ね判定)
+      // それ以外(左半分かつ縦が上端/下端寄り)→ 兄弟挿入
+      const inRightHalf = offsetX > rBox.width / 2;
+      const inVerticalMiddle = offsetY > rBox.height * 0.25 && offsetY < rBox.height * 0.75;
+      if (inRightHalf || inVerticalMiddle) {
+        position = "into";
+      } else if (offsetY < rBox.height / 2) {
+        position = "before";
+      } else {
+        position = "after";
+      }
+    }
+    if (position === "into") {
+      targetRow.classList.add("drop-target-into");
+    } else if (position === "before") {
+      targetRow.classList.add("drop-target-before");
+    } else {
+      targetRow.classList.add("drop-target-after");
+    }
+    lastDropInfo = { targetId, position };
+  };
+
+  const onMouseUp = (e) => {
+    if (!dragNodeId) return;
+    const wasDragging = isDragging;
+    const sourceId = dragNodeId;
+    const dropInfo = lastDropInfo;
+    // 後片付け
+    dragNodeId = null;
+    dragStartPos = null;
+    isDragging = false;
+    lastDropInfo = null;
+    clearDropHints(canvas);
+    canvas.querySelectorAll(".mm-node-row.dragging").forEach((r) => r.classList.remove("dragging"));
+    if (ghostEl) {
+      ghostEl.remove();
+      ghostEl = null;
+    }
+    document.body.style.cursor = "";
+    if (!wasDragging) return; // 単なるクリックの場合はここで終わり
+    if (!dropInfo) return;
+    // 実行
+    moveMmNodeTo(sourceId, dropInfo.targetId, dropInfo.position);
+  };
+
+  canvas.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+}
+
+function clearDropHints(canvas) {
+  canvas.querySelectorAll(".drop-target-into, .drop-target-before, .drop-target-after").forEach((el) => {
+    el.classList.remove("drop-target-into", "drop-target-before", "drop-target-after");
+  });
+}
+
+// ノードAがノードBの子孫かどうか(B以下のサブツリーにAが含まれるか)
+function isDescendant(ancestorId, candidateId) {
+  const mm = getActiveMindmap();
+  if (!mm) return false;
+  if (ancestorId === candidateId) return true;
+  const ancestor = findMmNode(mm.root, ancestorId);
+  if (!ancestor) return false;
+  function walk(node) {
+    if (node.id === candidateId) return true;
+    if (!node.children) return false;
+    for (const c of node.children) {
+      if (walk(c)) return true;
+    }
+    return false;
+  }
+  return walk(ancestor);
+}
+
+// ノードを別の場所に移動
+function moveMmNodeTo(sourceId, targetId, position) {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  if (sourceId === targetId) return;
+  const sourceFound = findMmNodeWithParent(mm.root, sourceId);
+  const targetFound = findMmNodeWithParent(mm.root, targetId);
+  if (!sourceFound || !targetFound) return;
+  if (!sourceFound.parent) return; // ルートは動かせない
+  // ループ防止チェック
+  if (isDescendant(sourceId, targetId)) return;
+
+  pushMmHistory();
+
+  // 元の親から外す
+  sourceFound.parent.children = sourceFound.parent.children.filter((c) => c.id !== sourceId);
+  const node = sourceFound.node;
+
+  if (position === "into") {
+    // ターゲットの子として末尾に追加
+    if (!targetFound.node.children) targetFound.node.children = [];
+    targetFound.node.children.push(node);
+    targetFound.node._collapsed = false;
+  } else {
+    // ターゲットの兄弟として、前 or 後
+    const parent = targetFound.parent;
+    if (!parent) return; // ターゲットがルートだった場合は into 扱いになるはずなのでここには来ない
+    const idx = parent.children.findIndex((c) => c.id === targetId);
+    if (idx === -1) return;
+    const insertAt = position === "before" ? idx : idx + 1;
+    parent.children.splice(insertAt, 0, node);
+  }
+
+  markMmDirty();
+  renderMindmap();
+}
+
+// 複数選択ノードの一括削除
+function deleteMultiSelected() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  if (multiSelectedIds.size === 0) return;
+  // ルートを除外
+  const targets = [...multiSelectedIds].filter((id) => id !== mm.root.id);
+  if (targets.length === 0) {
+    alert("ルートノードは削除できません");
+    multiSelectedIds.clear();
+    renderMindmap();
+    return;
+  }
+  pushMmHistory();
+  // 各ノードを親から削除(子孫も自動で消える)
+  for (const id of targets) {
+    const found = findMmNodeWithParent(mm.root, id);
+    if (found && found.parent) {
+      found.parent.children = found.parent.children.filter((c) => c.id !== id);
+    }
+  }
+  multiSelectedIds.clear();
+  selectedNodeId = null;
+  markMmDirty();
+  renderMindmap();
+}
+
+// 矢印キーでノード選択を移動
+function moveSelectionTo(mm, direction) {
+  const current = findMmNodeWithParent(mm.root, selectedNodeId);
+  if (!current) return;
+  const node = current.node;
+  const parent = current.parent;
+  let nextId = null;
+
+  if (direction === "right") {
+    // 右:子の先頭へ。折りたたみ中なら開く
+    if (node.children && node.children.length > 0) {
+      if (node._collapsed) {
+        node._collapsed = false;
+        renderMindmap();
+      }
+      nextId = node.children[0].id;
+    }
+  } else if (direction === "left") {
+    // 左:親へ。ルートなら何もしない
+    if (parent) nextId = parent.id;
+  } else if (direction === "down") {
+    // 下:同階層の次の兄弟へ。なければ次の上位の兄弟探索
+    if (parent) {
+      const idx = parent.children.findIndex((c) => c.id === node.id);
+      if (idx >= 0 && idx < parent.children.length - 1) {
+        nextId = parent.children[idx + 1].id;
+      } else {
+        // 兄弟が無い → 親の次の兄弟を探す(上方向に遡る)
+        let cur = parent;
+        let curParent = findMmNodeWithParent(mm.root, parent.id)?.parent;
+        while (curParent) {
+          const ci = curParent.children.findIndex((c) => c.id === cur.id);
+          if (ci < curParent.children.length - 1) {
+            nextId = curParent.children[ci + 1].id;
+            break;
+          }
+          cur = curParent;
+          curParent = findMmNodeWithParent(mm.root, curParent.id)?.parent;
+        }
+      }
+    }
+  } else if (direction === "up") {
+    // 上:同階層の前の兄弟へ。前の兄弟の末尾の子孫がいればそこへ
+    if (parent) {
+      const idx = parent.children.findIndex((c) => c.id === node.id);
+      if (idx > 0) {
+        // 前の兄弟の最後の表示中の子孫
+        let target = parent.children[idx - 1];
+        while (target.children && target.children.length > 0 && !target._collapsed) {
+          target = target.children[target.children.length - 1];
+        }
+        nextId = target.id;
+      } else {
+        // 前の兄弟がない → 親へ
+        nextId = parent.id;
+      }
+    }
+  }
+
+  if (nextId && nextId !== selectedNodeId) {
+    selectedNodeId = nextId;
+    // 軽量更新:再描画せず、クラス付替えだけ
+    const canvas = $("mindmap-canvas");
+    canvas.querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
+    const newRow = canvas.querySelector(`.mm-node-row[data-id="${CSS.escape(nextId)}"]`);
+    if (newRow) {
+      newRow.classList.add("selected");
+      newRow.focus({ preventScroll: false });
+      // 画面外なら可視範囲にスクロール
+      newRow.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    }
+  }
+}
+
+// 兄弟ノード追加(Enter) - ローカル更新のみ、保存は明示ボタンで
+function addMmSibling(nodeId) {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  const found = findMmNodeWithParent(mm.root, nodeId);
+  if (!found || !found.parent) {
+    // ルートには兄弟を作れない → 代わりに子を作る
+    addMmChild(nodeId);
+    return;
+  }
+  pushMmHistory();
+  const newNode = { id: "n-" + genId(), text: "新ノード", children: [] };
+  const idx = found.parent.children.findIndex((c) => c.id === nodeId);
+  found.parent.children.splice(idx + 1, 0, newNode);
+  selectedNodeId = newNode.id;
+  markMmDirty();
+  renderMindmap();
+  // 追加後すぐに編集モード(同期的に呼ぶ → 描画完了を待つだけ)
+  requestAnimationFrame(() => startInlineEdit(newNode.id));
+}
+
+// インライン編集(contenteditableで)
+function startInlineEdit(nodeId) {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  const node = findMmNode(mm.root, nodeId);
+  if (!node) return;
+  const txt = document.querySelector(`.mm-node-text[data-id="${CSS.escape(nodeId)}"]`);
+  if (!txt) return;
+  editingNodeId = nodeId;
+  txt.setAttribute("contenteditable", "true");
+  txt.focus();
+  // 全選択
+  const range = document.createRange();
+  range.selectNodeContents(txt);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  const oldText = node.text || "";
+  const commit = (cancel, nextAction) => {
+    if (editingNodeId !== nodeId) return;
+    editingNodeId = null;
+    txt.removeAttribute("contenteditable");
+    const newText = (cancel ? oldText : txt.textContent.trim()) || oldText;
+    txt.textContent = newText;
+    if (!cancel && newText !== oldText) {
+      pushMmHistory();
+      node.text = newText;
+      if (node.id === mm.root.id) mm.name = newText;
+      markMmDirty();
+      // ビューバー(マップ名表示)も更新する必要がある場合のみrenderViewBar
+      if (node.id === mm.root.id) renderViewBar();
+      // タイトル表示を更新
+      $("mindmap-title").textContent = mm.name;
+    }
+    // 編集を確定したら、選択ノードの行にフォーカスを戻す(キーボード操作を継続できるように)
+    const row = $("mindmap-canvas").querySelector(`.mm-node-row[data-id="${CSS.escape(nodeId)}"]`);
+    if (row) {
+      // すべての選択クラスをクリアして、このノードを選択中にする
+      $("mindmap-canvas").querySelectorAll(".mm-node-row.selected").forEach((r) => r.classList.remove("selected"));
+      row.classList.add("selected");
+      selectedNodeId = nodeId;
+      row.focus({ preventScroll: true });
+    }
+    // 次のアクション:兄弟 or 子ノード追加 → 連続入力可能に
+    if (nextAction === "sibling") {
+      // ルートに兄弟は作れない → 子にフォールバック
+      requestAnimationFrame(() => addMmSibling(nodeId));
+    } else if (nextAction === "child") {
+      requestAnimationFrame(() => addMmChild(nodeId));
+    } else {
+      // 通常確定:コネクター再描画(テキスト幅が変わった可能性)
+      requestAnimationFrame(() => drawConnectors(mm, $("mindmap-canvas")));
+    }
+  };
+  txt.addEventListener("blur", () => commit(false, null), { once: true });
+  txt.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // 編集を確定のみ(兄弟追加はしない)
+      commit(false, null);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      // 編集を確定のみ(子追加はしない)
+      commit(false, null);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      commit(true, null);
+    }
+    e.stopPropagation();
+  });
+}
+
+function findMmNode(node, id, parent) {
+  if (node.id === id) return node;
+  for (const c of node.children || []) {
+    const found = findMmNode(c, id, node);
+    if (found) return found;
+  }
+  return null;
+}
+function findMmNodeWithParent(node, id, parent) {
+  if (node.id === id) return { node, parent };
+  for (const c of node.children || []) {
+    const found = findMmNodeWithParent(c, id, node);
+    if (found) return found;
+  }
+  return null;
+}
+
+function addMmChild(parentId) {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  const parent = findMmNode(mm.root, parentId);
+  if (!parent) return;
+  pushMmHistory();
+  if (!parent.children) parent.children = [];
+  const newNode = { id: "n-" + genId(), text: "新ノード", children: [] };
+  parent.children.push(newNode);
+  parent._collapsed = false;
+  selectedNodeId = newNode.id;
+  markMmDirty();
+  renderMindmap();
+  // 追加後すぐにインライン編集モード
+  requestAnimationFrame(() => startInlineEdit(newNode.id));
+}
+
+function deleteMmNode(nodeId) {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  const found = findMmNodeWithParent(mm.root, nodeId);
+  if (!found || !found.parent) return; // ルートは削除不可
+  pushMmHistory();
+  found.parent.children = found.parent.children.filter((c) => c.id !== nodeId);
+  selectedNodeId = null;
+  markMmDirty();
+  renderMindmap();
+}
+
+function renameMindmap() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  const name = prompt("マインドマップの名前を入力", mm.name);
+  if (!name || !name.trim() || name.trim() === mm.name) return;
+  const trimmed = name.trim();
+  mm.name = trimmed;
+  // ルートテキストも同期
+  if (mm.root) mm.root.text = trimmed;
+  markMmDirty();
+  render();
+}
+
+async function deleteMindmap() {
+  const mm = getActiveMindmap();
+  if (!mm) return;
+  if (!confirm(`マインドマップ「${mm.name}」を削除しますか?\n(中のノードもすべて削除されます)`)) return;
+  mindmaps = mindmaps.filter((m) => m.id !== mm.id);
+  // 削除は即保存(他に未保存があってもまとめて保存される)
+  try {
+    await saveData(`Delete mindmap: ${mm.name}`);
+    mmDirty = false;
+    activeViewId = "_main";
+    render();
+  } catch (err) {
+    alert("削除失敗: " + err.message);
+  }
+}
+
+
 
 // 1行表示時のページ送りボタン(1-15 / 16-30 …)。全商品で最大の画像枚数からページ数を決める。
 function renderGalleryPager(sortedProducts) {
@@ -2332,6 +3365,49 @@ function bindEvents() {
 
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", (e) => e.preventDefault());
+
+  // ---------- マインドマップ:新規追加・操作 ----------
+  $("btn-add-mindmap").addEventListener("click", makeNewMindmap);
+  $("btn-mindmap-rename").addEventListener("click", renameMindmap);
+  $("btn-mindmap-delete").addEventListener("click", deleteMindmap);
+  $("btn-mindmap-save").addEventListener("click", saveMindmapChanges);
+  $("btn-mindmap-undo").addEventListener("click", undoMm);
+  $("btn-mindmap-redo").addEventListener("click", redoMm);
+
+  // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
+  document.addEventListener("keydown", (e) => {
+    const isMod = e.ctrlKey || e.metaKey;
+    if (!isMod) return;
+    // マインドマップビュー時のみ undo/redo
+    if (activeViewId !== "_main") {
+      // インライン編集中はブラウザのデフォルト(テキスト編集の undo)に任せる
+      if (typeof editingNodeId !== "undefined" && editingNodeId) return;
+      // 入力フィールドにフォーカスがある時もスキップ
+      const tag = (document.activeElement && document.activeElement.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoMm();
+        return;
+      }
+      if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+        e.preventDefault();
+        redoMm();
+        return;
+      }
+    }
+    if (e.key === "s") {
+      if (activeViewId !== "_main" && mmDirty) {
+        e.preventDefault();
+        saveMindmapChanges();
+      }
+    }
+  });
+
+  // ビューバー(メイン)タブの初期描画はrender()で行われる。「メイン」タブクリック用に
+  // 静的なメインタブはビューバー内に動的に追加する設計だが、ImageFlowでは renderViewBar() 内で
+  // 「メイン」タブを左端に常時表示する。
 }
 
 // ---------- 初期化 ----------
