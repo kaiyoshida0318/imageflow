@@ -3324,6 +3324,122 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 
 /* ============================================== */
+/* v3.42.0: テンプレ機能 */
+/* ============================================== */
+
+/* 2段目バー(テンプレタブ時) */
+.templates-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 8px 0;
+}
+.templates-bar-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+/* テンプレ一覧 */
+#templates-view {
+  padding: 0;
+}
+.templates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 24px;
+}
+.template-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.template-card:hover {
+  border-color: var(--ink-soft);
+}
+.template-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.template-title-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+}
+.template-title-input:hover { background: var(--bg-2); }
+.template-title-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.template-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.template-act {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.template-act:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
+}
+.template-act:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.template-act.danger:hover {
+  border-color: #c2185b;
+  color: #c2185b;
+  background: #fde2eb;
+}
+.template-act.copied {
+  background: #2f6d4f;
+  color: #fff !important;
+  border-color: #2f6d4f !important;
+}
+.template-body-input {
+  width: 100%;
+  min-height: 90px;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+  line-height: 1.6;
+}
+.template-body-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+
+/* ============================================== */
 /* v3.41.0: 2段ナビバー(メイン/工程表 + タグフィルタ) */
 /* ============================================== */
 
