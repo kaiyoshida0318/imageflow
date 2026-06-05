@@ -70,6 +70,8 @@ let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
 let mindmaps = [];      // マインドマップ [{id, name, root}]
 let activeViewId = "_main"; // "_main" or mindmap.id
+let activeTopTab = "main"; // "main" or "xmind" (1段目のタブ)
+let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
 let selectedNodeId = null; // 編集中の選択ノード
 let mmDirty = false;       // マインドマップに未保存の変更があるか
 let mmHistory = [];        // 履歴スタック(各エントリ:該当マインドマップのJSONスナップショット)
@@ -456,15 +458,19 @@ function collectAllImages(p, mode) {
 }
 
 function render() {
-  $("stat-count").textContent = products.length;
+  // stat-count: メインモード時はフィルタ後の件数、工程表時は全件
+  const visibleCount = (activeTopTab === "main" && activeTagFilter !== "_all")
+    ? products.filter((p) => Array.isArray(p.tags) && p.tags.includes(activeTagFilter)).length
+    : products.length;
+  $("stat-count").textContent = visibleCount;
   const gallery = $("gallery");
   $("loading").style.display = "none";
 
-  // ビューバーを描画
-  renderViewBar();
+  // 1段目タブ + 2段目バー描画
+  renderTopTabBar();
 
-  // マインドマップビューの場合はそれを描画してメイン処理は飛ばす
-  if (activeViewId !== "_main") {
+  // 工程表モード: マインドマップ画面
+  if (activeTopTab === "xmind" && activeViewId !== "_main") {
     gallery.style.display = "none";
     $("empty-state").style.display = "none";
     $("gallery-pager").style.display = "none";
@@ -472,19 +478,77 @@ function render() {
     renderMindmap();
     return;
   }
-  // メインビュー
+  // 工程表モードだがマップが未選択 or 0個 → 案内
+  if (activeTopTab === "xmind") {
+    gallery.style.display = "none";
+    $("empty-state").style.display = "block";
+    $("empty-state").innerHTML = '<div class="empty-illust">🗺️</div><p>右の <b>+</b> から新しい工程表を作成してください。</p>';
+    $("gallery-pager").style.display = "none";
+    $("mindmap-view").style.display = "none";
+    return;
+  }
+  // メインモード
   $("mindmap-view").style.display = "none";
   gallery.style.display = "";
 
   if (products.length === 0) {
     $("empty-state").style.display = "block";
+    $("empty-state").innerHTML = '<div class="empty-illust">◇ ◆ ◇</div><p>まだデータがありません。右上の <b>+ Add</b> から追加しましょう。</p>';
     gallery.innerHTML = "";
     return;
   }
   $("empty-state").style.display = "none";
 
-  // v3.8.0: 表示は画像一覧(縦長サムネ)のみ
+  // 画像一覧(縦長サムネ)
   renderGalleryView();
+}
+
+// 1段目タブと、その下の2段目バーを描画
+function renderTopTabBar() {
+  // 1段目: メイン / 工程表 のトグル
+  $("top-tab-main").classList.toggle("active", activeTopTab === "main");
+  $("top-tab-xmind").classList.toggle("active", activeTopTab === "xmind");
+  // 2段目: 1段目の選択によって表示切替
+  if (activeTopTab === "main") {
+    $("tag-filter-list").style.display = "";
+    $("view-list").style.display = "none";
+    $("btn-add-mindmap").style.display = "none";
+    renderTagFilterBar();
+  } else {
+    $("tag-filter-list").style.display = "none";
+    $("view-list").style.display = "";
+    $("btn-add-mindmap").style.display = "";
+    renderViewBar();
+  }
+}
+
+// メインタブ下のタグフィルタバー(全て + tagGroups内のタグ)
+function renderTagFilterBar() {
+  const wrap = $("tag-filter-list");
+  // 「全て」 + tagGroupsから全タグを順番に並べる
+  const allTags = [];
+  for (const g of (tagGroups || [])) {
+    if (Array.isArray(g.tags)) for (const t of g.tags) allTags.push(t);
+  }
+  const allBtn = `<button class="tag-filter-btn${activeTagFilter === "_all" ? " active" : ""}" data-tag="_all">全て</button>`;
+  const tagBtns = allTags.map((t) => {
+    const isActive = activeTagFilter === t.name;
+    const bg = t.color || "#888";
+    const style = isActive
+      ? `background:${bg};color:#fff;border-color:${bg};`
+      : `background:#fff;color:${bg};border-color:${bg};`;
+    return `<button class="tag-filter-btn${isActive ? " active" : ""}" data-tag="${escapeHtml(t.name)}" style="${style}">${escapeHtml(t.name)}</button>`;
+  }).join("");
+  wrap.innerHTML = allBtn + tagBtns;
+  // イベントbind
+  wrap.querySelectorAll(".tag-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const newFilter = btn.dataset.tag;
+      if (newFilter === activeTagFilter) return;
+      activeTagFilter = newFilter;
+      render();
+    });
+  });
 }
 
 
@@ -495,13 +559,7 @@ function render() {
 // ---------- ビュー切り替えバー(ギャラリー/マインドマップ) ----------
 function renderViewBar() {
   const viewList = $("view-list");
-  // 「メイン」タブを左端に固定表示
-  const mainHtml = `
-    <div class="view-item view-item-main ${activeViewId === "_main" ? 'active' : ''}" data-view-id="_main">
-      <span class="view-item-icon">🏠</span>
-      <span>メイン</span>
-    </div>`;
-  // 各マインドマップ
+  // 各マインドマップタブ
   const mmsHtml = mindmaps.map((m, i) => {
     const isActive = activeViewId === m.id;
     return `
@@ -515,15 +573,13 @@ function renderViewBar() {
     </div>
   `;
   }).join("");
-  viewList.innerHTML = mainHtml + mmsHtml;
+  viewList.innerHTML = mmsHtml || '<div class="view-item-empty">工程表未作成 — 右の「+」から追加</div>';
 
   viewList.querySelectorAll(".view-item").forEach((el) => {
     el.addEventListener("click", (e) => {
-      // ミニボタン(並び替え)のクリックは別処理
       if (e.target.closest(".tab-mini-btn")) return;
       const target = el.dataset.viewId;
       if (target === activeViewId) return;
-      // マインドマップから離れる場合は未保存チェック
       if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
       activeViewId = target;
       selectedNodeId = null;
@@ -531,7 +587,6 @@ function renderViewBar() {
     });
   });
 
-  // ミニボタン(並び替え)
   viewList.querySelectorAll(".tab-mini-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -578,6 +633,7 @@ function makeNewMindmap() {
   mindmaps.push(newMm);
   saveData(`Add mindmap: ${trimmed}`).then(() => {
     activeViewId = newMm.id;
+    activeTopTab = "xmind";  // 自動で工程表タブに切り替え
     mmDirty = false;
     render();
   }).catch((err) => alert("作成失敗: " + err.message));
@@ -1537,7 +1593,11 @@ function renderGalleryPager(sortedProducts) {
 function renderGalleryView() {
   const gallery = $("gallery");
   gallery.className = "gallery-rows thumb-tall" + (galleryWrap ? " gallery-wrap" : "");
-  const sorted = products.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  // タグフィルタを適用("_all"なら全件)
+  const baseList = activeTagFilter === "_all"
+    ? products
+    : products.filter((p) => Array.isArray(p.tags) && p.tags.includes(activeTagFilter));
+  const sorted = baseList.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   // ページャ更新(1行モードのみ)。全商品で最大の画像枚数を基準にページ数を決める。
   renderGalleryPager(sorted);
@@ -1545,6 +1605,12 @@ function renderGalleryView() {
   const usePaging = !galleryWrap;
   const start = galleryPage * GALLERY_PAGE_SIZE;
   const end = start + GALLERY_PAGE_SIZE;
+
+  // フィルタの結果0件
+  if (sorted.length === 0) {
+    gallery.innerHTML = `<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">🔍</div><p>「${escapeHtml(activeTagFilter)}」のタグが付いた商品はありません。</p></div>`;
+    return;
+  }
 
   gallery.innerHTML = sorted.map((p) => {
     const allImgs = collectAllImages(p, galleryViewMode);
@@ -3373,6 +3439,29 @@ function bindEvents() {
   $("btn-mindmap-save").addEventListener("click", saveMindmapChanges);
   $("btn-mindmap-undo").addEventListener("click", undoMm);
   $("btn-mindmap-redo").addEventListener("click", redoMm);
+
+  // 1段目タブ(メイン / 工程表)の切り替え
+  $("top-tab-main").addEventListener("click", () => {
+    if (activeTopTab === "main") return;
+    // 工程表から抜ける場合は未保存チェック
+    if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
+    activeTopTab = "main";
+    activeViewId = "_main";
+    selectedNodeId = null;
+    render();
+  });
+  $("top-tab-xmind").addEventListener("click", () => {
+    if (activeTopTab === "xmind") return;
+    activeTopTab = "xmind";
+    // 最初の工程表を自動選択(無ければ_main相当の案内が出る)
+    if (mindmaps.length > 0) {
+      activeViewId = mindmaps[0].id;
+    } else {
+      activeViewId = "_main"; // 「未作成」案内表示用
+    }
+    selectedNodeId = null;
+    render();
+  });
 
   // Ctrl+S(またはCmd+S)で保存、Ctrl+Z/Y で undo/redo
   document.addEventListener("keydown", (e) => {
