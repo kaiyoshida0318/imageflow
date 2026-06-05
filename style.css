@@ -3334,6 +3334,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 12px;
   flex: 1;
   padding: 8px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .templates-bar-label {
   font-family: var(--mono);
@@ -3341,6 +3343,50 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-weight: 600;
   color: var(--ink-soft);
   letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.templates-tab-list {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.template-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 200px;
+  transition: all 0.15s;
+}
+.template-tab > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.template-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.template-tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.template-tab.active:hover {
+  background: var(--ink);
+  color: #fff;
 }
 
 /* テンプレ一覧 */
