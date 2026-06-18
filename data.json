@@ -1,6 +1,29 @@
 {
   "products": [
     {
+      "id": "mqj6vbqy5b84x1",
+      "name": "マグネットシリコンバンド",
+      "startDate": "26-0618",
+      "image": "images/mqj6vbqy5b84x1.jpg",
+      "sectionItems": [
+        {
+          "iid": "mqj6vcxetsppzx",
+          "key": "free-mqj6vcxe9mzcwn",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
+        }
+      ],
+      "createdAt": "2026-06-18T07:39:08.978Z"
+    },
+    {
       "id": "mpysw1pls7y8uw",
       "name": "爪切り",
       "startDate": "26-0604",
