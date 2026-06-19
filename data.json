@@ -25,7 +25,7 @@
           "iid": "mqkq4qrmhex1ff",
           "key": "free-mqkq4qrmhex1ff",
           "textsTop": [
-            ""
+            "ありがとう　上記の情報から楽天のトップ画像に使える画像を700*700で作成してほしい　可能なかぎりクリック率を取れそうな画像にしてね　左上にはNo1を後で入れたいから開けておいてほしい"
           ],
           "textsBottom": [
             ""
@@ -33,7 +33,8 @@
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-06-18T07:39:08.978Z"
