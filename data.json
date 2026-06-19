@@ -42,15 +42,18 @@
           "iid": "mqkq69yvlpubos",
           "key": "free-mqkq69yvlpubos",
           "textsTop": [
-            ""
+            "これを元画像として変えていきたい　右側の2個の時計バンドを消して、そこにこの画像をいれて、んで、下の方の色一覧については、zipの画像のやつをそのまま使って　もしスペース的にバランスが悪いなら全色いれないでいいから、バランスを考慮してつくってね"
           ],
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/mqj6vbqy5b84x1-mqkq69yvlpubos-material-1781861264974-usefinal.svg"
+          ],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-06-18T07:39:08.978Z"
