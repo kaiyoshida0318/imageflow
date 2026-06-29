@@ -1,6 +1,29 @@
 {
   "products": [
     {
+      "id": "mqywh2q13yajoh",
+      "name": "電動爪切り",
+      "startDate": "26-0629",
+      "image": "images/mqywh2q13yajoh.webp",
+      "sectionItems": [
+        {
+          "iid": "mqywh3tqqdhyje",
+          "key": "free-mqywh3tq2trics",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
+        }
+      ],
+      "createdAt": "2026-06-29T07:32:26.654Z"
+    },
+    {
       "id": "mqj6vbqy5b84x1",
       "name": "マグネットシリコンバンド",
       "startDate": "26-0618",
