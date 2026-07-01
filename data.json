@@ -32,15 +32,18 @@
           "iid": "mr1eb3494nbrd4",
           "key": "free-mr1eb3494nbrd4",
           "textsTop": [
-            ""
+            "この商品なんだけど、ターゲットカラーは何がいいかな"
           ],
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/mqywh2q13yajoh-mr1eb3494nbrd4-material-1782869236581-usetop.svg"
+          ],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-06-29T07:32:26.654Z"
