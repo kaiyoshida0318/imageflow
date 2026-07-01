@@ -42,7 +42,12 @@
           ],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": [],
+          "filesFinal": [
+            {
+              "path": "files/mqywh2q13yajoh-mr1eb3494nbrd4-final-1782869286044-1-___.txt",
+              "name": "カラー.txt"
+            }
+          ],
           "imagesFinalChecked": []
         }
       ],
