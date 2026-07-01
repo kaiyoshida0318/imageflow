@@ -989,11 +989,28 @@
   "mindmaps": [
     {
       "id": "mm-mq08d6jifsqfs4",
-      "name": "mindmap",
+      "name": "絶対に使える部分",
       "root": {
         "id": "n-mq08d6jilytvdg",
-        "text": "mindmap",
-        "children": []
+        "text": "絶対に使える部分",
+        "children": [
+          {
+            "id": "n-mr1edd0s1arp3z",
+            "text": "商品を読み込ませて、全体像の作成",
+            "children": []
+          },
+          {
+            "id": "n-mr1eddloumq7we",
+            "text": "商品をy読み込ませて、ベースカラーの選定",
+            "children": []
+          },
+          {
+            "id": "n-mr1ede1otksc83",
+            "text": "新ノード",
+            "children": []
+          }
+        ],
+        "_collapsed": false
       }
     }
   ],
