@@ -10,7 +10,7 @@
           "iid": "mrlr70ns9925ap",
           "key": "free-mrlr70nsgkk4gu",
           "textsTop": [
-            ""
+            "既存のレビュー"
           ],
           "textsBottom": [
             ""
@@ -18,7 +18,8 @@
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-07-15T07:23:19.960Z"
