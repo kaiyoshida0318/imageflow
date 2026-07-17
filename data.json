@@ -1,6 +1,29 @@
 {
   "products": [
     {
+      "id": "mrooj6sar051rc",
+      "name": "メモスタンド",
+      "startDate": "26-0717",
+      "image": "images/mrooj6sar051rc.webp",
+      "sectionItems": [
+        {
+          "iid": "mrooj87b8ay5fq",
+          "key": "free-mrooj87b9mp4fk",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
+        }
+      ],
+      "createdAt": "2026-07-17T08:32:09.287Z"
+    },
+    {
       "id": "mrlr6z99oxupxw",
       "name": "移動ポケット　クリップ",
       "startDate": "26-0715",
