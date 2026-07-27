@@ -617,11 +617,11 @@ function renderTemplates() {
       <div class="template-body-split">
         <div class="template-body-col">
           <label class="template-body-label">ポイント</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に">${escapeHtml(t.body || "")}</textarea>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="body" placeholder="要点・概要を簡潔に"></textarea>
         </div>
         <div class="template-body-col">
           <label class="template-body-label">全文</label>
-          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)">${escapeHtml(t.bodyFull || "")}</textarea>
+          <textarea class="template-body-input" data-id="${escapeHtml(t.id)}" data-field="bodyFull" placeholder="本文(複数行OK、ChatGPTから貼り付け可)"></textarea>
         </div>
       </div>
     </div>`;
@@ -687,7 +687,13 @@ function bindTemplatesEvents() {
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   });
   // 本文編集(blur保存) - data-fieldで body / bodyFull を切替
+  // v3.42.12: 初期値は HTML パーサーを通さず直接 .value に代入(改行を確実に保持)
   wrap.querySelectorAll(".template-body-input").forEach((ta) => {
+    const t = templates.find((x) => x.id === ta.dataset.id);
+    if (t) {
+      const field = ta.dataset.field;
+      ta.value = t[field] || "";
+    }
     ta.addEventListener("blur", () => {
       const t = templates.find((x) => x.id === ta.dataset.id);
       if (!t) return;
