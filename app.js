@@ -2165,9 +2165,10 @@ function renderSections(p) {
 
     // v3.44.0: isInitial(初期分析)の場合、完成品エリアをテキスト入力欄に置き換え
     const isInitial = item.isInitial === true;
+    // v3.44.5: 全項目にラベルを表示(初期分析はオレンジ、基本欄はグレー)
     const initialTitleHtml = isInitial
       ? `<div class="sec-initial-title" title="初期分析項目">初期分析</div>`
-      : "";
+      : `<div class="sec-initial-title sec-basic-title" title="基本欄項目">基本欄</div>`;
     const finalSideHtml = isInitial
       ? (() => {
           const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : [""];
@@ -2254,9 +2255,12 @@ function renderSections(p) {
   }).join("");
 
   // 末尾に「+ 項目を追加」ボタン(押すと空白項目を1つ追加)
+  // v3.44.5: 種類選択可(基本欄 / 初期分析)
   const addAreaHtml = `
     <div class="sec-add-item-area">
-      <button id="sec-add-item-btn" class="sec-add-item-btn">＋ 項目を追加</button>
+      <span class="sec-add-item-label">項目を追加:</span>
+      <button id="sec-add-item-btn" class="sec-add-item-btn">＋ 基本欄</button>
+      <button id="sec-add-initial-btn" class="sec-add-item-btn sec-add-initial-btn">＋ 初期分析</button>
     </div>`;
 
   wrap.innerHTML = sectionsHtml + addAreaHtml;
@@ -2462,6 +2466,9 @@ function renderSections(p) {
   });
   // +項目を追加(空白の新規項目を1つ追加)
   $("sec-add-item-btn").addEventListener("click", addBlankSectionItem);
+  // v3.44.5: +初期分析(初期分析項目を1つ追加)
+  const initBtn = $("sec-add-initial-btn");
+  if (initBtn) initBtn.addEventListener("click", addInitialAnalysisItem);
 }
 
 // 項目を上下に移動
@@ -2790,6 +2797,32 @@ async function addBlankSectionItem() {
   }, 30);
   // 保存はバックグラウンド(エラーは通知だけして画面は維持)
   saveData(`Add blank section item: ${p.name}`, mergeCurrentProduct(p))
+    .catch((err) => alert("追加の保存に失敗: " + err.message));
+}
+
+// v3.44.5: 初期分析項目を新規追加(素材+分析結果テキストの構造)
+async function addInitialAnalysisItem() {
+  const p = getCurrentProduct();
+  if (!p) return;
+  if (!Array.isArray(p.sectionItems)) p.sectionItems = [];
+  const iid = genId();
+  p.sectionItems.push({
+    iid,
+    key: "initial-" + iid,
+    isInitial: true,             // 初期分析フラグ
+    title: "初期分析",
+    textsTop: [""],
+    textsBottom: [""],
+    images: [], files: [],
+    imagesFinal: [], filesFinal: [],
+    analysisTexts: [""]           // 分析結果テキスト(複数入力可)
+  });
+  renderSections(p);
+  setTimeout(() => {
+    const section = document.querySelector(`.editor-section[data-iid="${CSS.escape(iid)}"]`);
+    if (section) section.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 30);
+  saveData(`Add initial analysis item: ${p.name}`, mergeCurrentProduct(p))
     .catch((err) => alert("追加の保存に失敗: " + err.message));
 }
 
