@@ -24,16 +24,15 @@
         {
           "iid": "ms718rall2330p",
           "key": "free-ms718rall2330p",
-          "textsTop": [
-            ""
-          ],
+          "textsTop": [],
           "textsBottom": [
             ""
           ],
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-07-30T04:45:09.576Z"
