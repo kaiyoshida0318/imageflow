@@ -3340,8 +3340,108 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 
 /* ============================================== */
-/* v3.42.0: テンプレ機能 */
+/* v3.44.0: 「初期分析」項目(isInitial)とテキスト欄+ボタン */
 /* ============================================== */
+
+/* 初期分析項目のヘッダータイトル */
+.sec-initial-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-2);
+  margin-bottom: 10px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* テキスト欄の + 追加ボタン */
+.sec-text-add {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sec-text-add:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 初期分析: 分析結果エリア */
+.sec-side-analysis .sec-analysis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sec-analysis-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.sec-analysis-input {
+  flex: 1;
+  min-height: 90px;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+  line-height: 1.6;
+}
+.sec-analysis-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+.sec-analysis-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: flex-start;
+}
+.sec-analysis-add, .sec-analysis-remove {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sec-analysis-add {
+  color: var(--accent);
+}
+.sec-analysis-add:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.sec-analysis-remove:hover:not(:disabled) {
+  border-color: #c2185b;
+  color: #c2185b;
+  background: #fde2eb;
+}
+.sec-analysis-remove:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 
 /* 2段目バー(テンプレタブ時) */
 .templates-bar {
