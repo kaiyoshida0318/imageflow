@@ -3410,7 +3410,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 4px;
   justify-content: flex-start;
 }
-.sec-analysis-add, .sec-analysis-remove {
+.sec-analysis-add, .sec-analysis-remove, .sec-analysis-edit {
   width: 30px;
   height: 30px;
   font-size: 12px;
@@ -3424,6 +3424,17 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.sec-analysis-edit {
+  width: auto;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sec-analysis-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-2);
 }
 .sec-analysis-add {
   color: var(--accent);
