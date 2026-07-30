@@ -2983,7 +2983,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   gap: 6px;
 }
-.sec-use-final, .sec-use-top, .sec-use-topall {
+.sec-use-final, .sec-use-top, .sec-use-topall,
+.sec-use-rivalrev, .sec-use-ownrev, .sec-use-pastlp {
   font-family: var(--sans);
   font-size: 10.5px;
   font-weight: 500;
@@ -2996,10 +2997,24 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   white-space: nowrap;
   transition: all 0.15s;
 }
-.sec-use-final:hover, .sec-use-topall:hover {
+.sec-use-final:hover, .sec-use-topall:hover,
+.sec-use-rivalrev:hover, .sec-use-ownrev:hover, .sec-use-pastlp:hover {
   border-color: var(--ink-soft);
   background: var(--bg-2);
   color: var(--ink);
+}
+/* v3.43.0: 2行ボタン群のラッパー */
+.sec-side-label-btns-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+.sec-side-label-btns-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
 }
 /* 「上部の情報を使用」ボタン: 完成品用とほぼ同じ配色 */
 .sec-use-top {
