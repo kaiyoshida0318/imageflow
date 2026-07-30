@@ -2130,15 +2130,18 @@ function renderSections(p) {
       // v3.44.4: 初期分析の下段(bottom)だけ、入力欄の左側にサイズ選択トグル(750*750 / 750*1230)
       const isAnalysisBottom = (item.isInitial === true && pos === "bottom");
       let sizeToggleHtml = "";
+      let copyWithSizeBtnHtml = "";
       if (isAnalysisBottom) {
         const sizes = Array.isArray(item.analysisSizes) ? item.analysisSizes : [];
         const curSize = sizes[i] || "750x750";  // デフォルト
         const isA = curSize === "750x750";
         sizeToggleHtml = `
           <div class="sec-size-toggle" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}">
-            <button type="button" class="sec-size-opt${isA ? " active" : ""}" data-size="750x750" title="この回答文は画像用(750×750)として出力">750*750</button>
-            <button type="button" class="sec-size-opt${!isA ? " active" : ""}" data-size="750x1230" title="この回答文は文章用(750×1230)として出力">750*1230</button>
+            <button type="button" class="sec-size-opt${isA ? " active" : ""}" data-size="750x750" title="この回答文は画像用(750×750)として扱う">750*750</button>
+            <button type="button" class="sec-size-opt${!isA ? " active" : ""}" data-size="750x1230" title="この回答文は文章用(750×1230)として扱う">750*1230</button>
           </div>`;
+        // v3.44.9: コピー(サイズ付き)ボタン - 選択中のサイズ指示文を先頭に付けてコピー
+        copyWithSizeBtnHtml = `<button class="sec-text-copy-size" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="サイズ指示文を先頭に付けて文章をコピー">コピー(サイズ付き)</button>`;
       }
       return `
       <div class="sec-text-item">
@@ -2148,6 +2151,7 @@ function renderSections(p) {
           ${addBtnHtml}
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
+          ${copyWithSizeBtnHtml}
           <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="${txtTitle}">${txtLabel}</button>
           <button class="sec-text-remove" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="このテキストを削除">×</button>
         </div>
@@ -2445,6 +2449,10 @@ function renderSections(p) {
   // 「コピー」ボタンで中身をクリップボードへ
   wrap.querySelectorAll(".sec-text-copy").forEach((btn) => {
     btn.addEventListener("click", () => copySectionText(btn));
+  });
+  // v3.44.9: 「コピー(サイズ付き)」ボタン - サイズ指示文を先頭に付けてコピー(初期分析bottom限定)
+  wrap.querySelectorAll(".sec-text-copy-size").forEach((btn) => {
+    btn.addEventListener("click", () => copySectionTextWithSize(btn));
   });
   // 「.txt」ボタンで文章をテキストファイルとしてダウンロード
   wrap.querySelectorAll(".sec-text-txt").forEach((btn) => {
@@ -3052,6 +3060,45 @@ async function copySectionText(btn) {
   }
 }
 
+// v3.44.9: サイズ指示文を先頭に付けてコピー(初期分析bottom限定)
+async function copySectionTextWithSize(btn) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, btn.dataset.iid);
+  if (!item) return;
+  const pos = btn.dataset.pos;
+  const idx = parseInt(btn.dataset.idx);
+  const arr = item[textArrName(pos)];
+  const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
+  const sizes = Array.isArray(item.analysisSizes) ? item.analysisSizes : [];
+  const size = sizes[idx] || "750x750";
+  const prefix = size === "750x1230"
+    ? "下記文章を750*1230でつくって\n\n"
+    : "下記画像を750*750でつくって\n\n";
+  const fullText = prefix + text;
+  const showOk = () => {
+    const orig = btn.textContent;
+    btn.textContent = "✓ コピー済み";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1200);
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(fullText);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = fullText;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    showOk();
+  } catch (e) {
+    alert("コピーに失敗しました: " + e.message);
+  }
+}
+
 // 商品内のテキスト通し番号(1始まり)。pos別に独立カウント:
 //   pos="top"   → 全項目のtextsTopだけを順に1,2,3…
 //   pos="bottom"→ 全項目のtextsBottomだけを順に1,2,3…
@@ -3079,7 +3126,7 @@ function safeFileName(name) {
 
 // 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。
 // ファイル名は「商品名-入力文/回答文-通し番号.txt」
-// v3.44.4: 初期分析itemのbottomは、選択されたサイズに応じて先頭に指示文を付与
+// v3.44.9: 回答文.txtは指示文を付けず、そのまま出力(サイズ指示文はコピー(サイズ付き)ボタンで付与)
 function downloadSectionText(btn) {
   const p = getCurrentProduct();
   if (!p) return;
@@ -3091,21 +3138,9 @@ function downloadSectionText(btn) {
   const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
   const serial = textSerialNumber(p, item.iid, pos, idx);
   const label = pos === "bottom" ? "回答文" : "入力文";
-  // 初期分析のbottomなら、選択されたサイズに応じて先頭に指示文を付ける
-  let bodyText = text;
-  let sizeSuffix = "";
-  if (item.isInitial === true && pos === "bottom") {
-    const sizes = Array.isArray(item.analysisSizes) ? item.analysisSizes : [];
-    const size = sizes[idx] || "750x750";
-    const prefix = size === "750x1230"
-      ? "下記文章を750*1230でつくって\n\n"
-      : "下記画像を750*750でつくって\n\n";
-    bodyText = prefix + text;
-    sizeSuffix = `-${size}`;
-  }
-  const filename = `${safeFileName(p.name)}-${label}-${serial}${sizeSuffix}.txt`;
+  const filename = `${safeFileName(p.name)}-${label}-${serial}.txt`;
   // BOM付きUTF-8でダウンロード(Windowsのメモ帳で文字化けを防ぐ)
-  const blob = new Blob(["\uFEFF" + bodyText], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
