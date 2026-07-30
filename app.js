@@ -2152,12 +2152,19 @@ function renderSections(p) {
           <div class="sec-side">
             <div class="sec-side-label sec-side-label-row">
               <span>素材</span>
-              <span class="sec-side-label-btns">
-                <button class="sec-use-topall" data-iid="${escapeHtml(item.iid)}" title="「all 当画像以前の画像を使用」のプレースホルダを素材に追加">当画像以前の画像を使用</button>
-                <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
-              <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
-            </span>
-          </div>
+              <span class="sec-side-label-btns-wrap">
+                <span class="sec-side-label-btns sec-side-label-btns-row">
+                  <button class="sec-use-rivalrev" data-iid="${escapeHtml(item.iid)}" title="「ライバルレビュー」のプレースホルダを素材に追加">ライバルレビュー</button>
+                  <button class="sec-use-ownrev" data-iid="${escapeHtml(item.iid)}" title="「自社レビュー」のプレースホルダを素材に追加">自社レビュー</button>
+                  <button class="sec-use-pastlp" data-iid="${escapeHtml(item.iid)}" title="「自社の過去LP」のプレースホルダを素材に追加">自社の過去LP</button>
+                </span>
+                <span class="sec-side-label-btns sec-side-label-btns-row">
+                  <button class="sec-use-topall" data-iid="${escapeHtml(item.iid)}" title="「all 当画像以前の画像を使用」のプレースホルダを素材に追加">当画像以前の画像を使用</button>
+                  <button class="sec-use-top" data-iid="${escapeHtml(item.iid)}" title="「↑上部の情報を使用」のプレースホルダを素材に追加">上部の情報を使用</button>
+                  <button class="sec-use-final" data-iid="${escapeHtml(item.iid)}" title="「右上の完成品を使用」のプレースホルダを素材に追加">右上の完成品を使用</button>
+                </span>
+              </span>
+            </div>
           <div class="sec-images">
             ${materialContent}
             <div class="sec-dropzone${materialEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="material" title="クリックまたはドラッグ&ドロップでアップロード">
@@ -2238,6 +2245,16 @@ function renderSections(p) {
   // 「当画像以前の画像を使用」プレースホルダを素材に追加
   wrap.querySelectorAll(".sec-use-topall").forEach((btn) => {
     btn.addEventListener("click", () => addTopAllPlaceholder(btn.dataset.iid));
+  });
+  // v3.43.0: 新3種のプレースホルダ
+  wrap.querySelectorAll(".sec-use-rivalrev").forEach((btn) => {
+    btn.addEventListener("click", () => addRivalRevPlaceholder(btn.dataset.iid));
+  });
+  wrap.querySelectorAll(".sec-use-ownrev").forEach((btn) => {
+    btn.addEventListener("click", () => addOwnRevPlaceholder(btn.dataset.iid));
+  });
+  wrap.querySelectorAll(".sec-use-pastlp").forEach((btn) => {
+    btn.addEventListener("click", () => addPastLpPlaceholder(btn.dataset.iid));
   });
   // ドロップゾーン(side別): クリックでファイル選択 / ドラッグ&ドロップ
   wrap.querySelectorAll(".sec-dropzone").forEach((dz) => {
@@ -3044,6 +3061,78 @@ async function addTopAllPlaceholder(iid) {
     await uploadFile(path, base64, `Add 'use top all' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
     item.images.push(path);
     await saveData(`Add 'use top all' placeholder: ${p.name}`, mergeCurrentProduct(p));
+    setHeadStatus("✓ 追加しました", "ok");
+    renderSections(p);
+    setTimeout(() => setHeadStatus(""), 1200);
+  } catch (err) {
+    setHeadStatus("✗ " + err.message, "err");
+  }
+}
+
+// v3.43.0: 「ライバルレビュー」プレースホルダ(赤系「rev」)
+function rivalRevPlaceholderSvgBase64() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="272" font-size="98" font-weight="800" fill="#d81b60">rev</text>
+    <text x="300" y="360" font-size="42" font-weight="700">ライバル</text>
+    <text x="300" y="422" font-size="42" font-weight="700">レビュー</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addRivalRevPlaceholder(iid) {
+  await _addPlaceholderCommon(iid, rivalRevPlaceholderSvgBase64(), "rivalrev", "rival review");
+}
+
+// v3.43.0: 「自社レビュー」プレースホルダ(青系「rev」)
+function ownRevPlaceholderSvgBase64() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="272" font-size="98" font-weight="800" fill="#1565c0">rev</text>
+    <text x="300" y="360" font-size="42" font-weight="700">自社</text>
+    <text x="300" y="422" font-size="42" font-weight="700">レビュー</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addOwnRevPlaceholder(iid) {
+  await _addPlaceholderCommon(iid, ownRevPlaceholderSvgBase64(), "ownrev", "own review");
+}
+
+// v3.43.0: 「自社の過去LP」プレースホルダ(紫系「LP」)
+function pastLpPlaceholderSvgBase64() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="272" font-size="110" font-weight="800" fill="#6a1b9a">LP</text>
+    <text x="300" y="360" font-size="42" font-weight="700">自社の</text>
+    <text x="300" y="422" font-size="42" font-weight="700">過去LP</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addPastLpPlaceholder(iid) {
+  await _addPlaceholderCommon(iid, pastLpPlaceholderSvgBase64(), "pastlp", "past LP");
+}
+
+// プレースホルダ追加の共通処理
+async function _addPlaceholderCommon(iid, base64, suffix, msgLabel) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.images)) item.images = [];
+  setHeadStatus("プレースホルダを追加中…");
+  try {
+    const path = `${IMAGES_DIR}/${p.id}-${item.iid}-material-${Date.now()}-${suffix}.svg`;
+    await uploadFile(path, base64, `Add '${msgLabel}' placeholder to ${sectionLabelOf(item)}: ${p.id}`);
+    item.images.push(path);
+    await saveData(`Add '${msgLabel}' placeholder: ${p.name}`, mergeCurrentProduct(p));
     setHeadStatus("✓ 追加しました", "ok");
     renderSections(p);
     setTimeout(() => setHeadStatus(""), 1200);
