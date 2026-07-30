@@ -3339,6 +3339,40 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 
+/* v3.44.4: 初期分析用: サイズ選択トグル(750*750 / 750*1230) */
+.sec-size-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  align-self: center;
+}
+.sec-size-opt {
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: var(--sans);
+  background: var(--card);
+  color: var(--ink-soft);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sec-size-opt + .sec-size-opt {
+  border-left: 1px solid var(--line);
+}
+.sec-size-opt:hover:not(.active) {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+.sec-size-opt.active {
+  background: var(--ink);
+  color: #fff;
+}
+
 /* ============================================== */
 /* v3.44.0: 「初期分析」項目(isInitial)とテキスト欄+ボタン */
 /* ============================================== */
