@@ -2184,6 +2184,7 @@ function renderSections(p) {
               <div class="sec-analysis-btns">
                 <button class="sec-analysis-edit" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="大きい画面で編集">編集</button>
                 <button class="sec-analysis-newedit" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="別ウインドウで編集(元画面を見ながら作業可)">新編集</button>
+                <button class="sec-analysis-txt" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="この分析結果を全文.txtでダウンロード">全文.txt</button>
                 ${addBtn}
                 <button class="sec-analysis-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="この分析結果を削除" ${arr.length === 1 ? "disabled" : ""}>×</button>
               </div>
@@ -2404,6 +2405,10 @@ function renderSections(p) {
   // v3.44.3: 分析結果の新編集(別ウインドウで編集: 元画面を見ながら操作可)
   wrap.querySelectorAll(".sec-analysis-newedit").forEach((btn) => {
     btn.addEventListener("click", () => openAnalysisNewWindow(btn.dataset.iid, parseInt(btn.dataset.idx)));
+  });
+  // v3.44.6: 分析結果の全文.txtダウンロード
+  wrap.querySelectorAll(".sec-analysis-txt").forEach((btn) => {
+    btn.addEventListener("click", () => downloadAnalysisText(btn));
   });
   // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
   wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
@@ -3132,6 +3137,34 @@ async function setAnalysisSize(iid, idx, size) {
     .catch((err) => alert("サイズ選択の保存に失敗: " + err.message));
 }
 
+// v3.44.6: 分析結果を全文.txtでダウンロード(そのままの内容、改行保持)
+function downloadAnalysisText(btn) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, btn.dataset.iid);
+  if (!item) return;
+  const idx = parseInt(btn.dataset.idx);
+  const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : [];
+  const text = arr[idx] !== undefined ? String(arr[idx]) : "";
+  const serial = idx + 1;
+  const filename = `${safeFileName(p.name)}-分析結果-${serial}.txt`;
+  // BOM付きUTF-8で改行そのまま
+  const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // 押したフィードバック
+  const orig = btn.textContent;
+  btn.textContent = "✓";
+  btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
+}
+
 async function closeTextFullscreen() {
   if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
   const p = getCurrentProduct();
@@ -3187,6 +3220,13 @@ async function commitSectionText(iid, pos, idx, value) {
   if (!item || !arr || arr[idx] === undefined) return;
   const newVal = value.trim();
   if (arr[idx] === newVal) return;
+  // v3.44.7: 元データに改行があり、1行化した表示値が今のinput値と同じなら上書きしない
+  // (input仕様上、改行を持てないので blur した「1行化された値」で改行込みデータを潰す事故を防ぐ)
+  const original = String(arr[idx] || "");
+  if (/\r|\n/.test(original)) {
+    const originalOneLine = original.replace(/\s*\r?\n\s*/g, " ").trim();
+    if (originalOneLine === newVal) return;  // 実質的な変更なし → 改行込みデータを維持
+  }
   arr[idx] = newVal;
   try {
     await saveData(`Update text: ${p.name}`, mergeCurrentProduct(p));
