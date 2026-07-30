@@ -3472,7 +3472,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 4px;
   justify-content: flex-start;
 }
-.sec-analysis-add, .sec-analysis-remove, .sec-analysis-edit, .sec-analysis-newedit {
+.sec-analysis-add, .sec-analysis-remove, .sec-analysis-edit, .sec-analysis-newedit, .sec-analysis-txt {
   width: 30px;
   height: 30px;
   font-size: 12px;
@@ -3488,7 +3488,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   justify-content: center;
 }
 .sec-analysis-edit,
-.sec-analysis-newedit {
+.sec-analysis-newedit,
+.sec-analysis-txt {
   width: auto;
   padding: 0 10px;
   font-size: 11px;
@@ -3508,6 +3509,21 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: #6a1b9a;
   background: #f3e5f5;
   color: #6a1b9a;
+}
+/* 全文.txt: 緑系(ダウンロード系の統一色) */
+.sec-analysis-txt {
+  color: #2f6d4f;
+  border-color: #c5d9c8;
+}
+.sec-analysis-txt:hover {
+  border-color: #2f6d4f;
+  background: #e5f0e6;
+  color: #2f6d4f;
+}
+.sec-analysis-txt.copied {
+  background: #2f6d4f;
+  color: #fff !important;
+  border-color: #2f6d4f !important;
 }
 .sec-analysis-add {
   color: var(--accent);
