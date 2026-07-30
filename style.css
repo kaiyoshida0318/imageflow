@@ -1726,7 +1726,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: var(--accent);
 }
 /* 「編集」ボタン(大きい画面を開く) */
-.sec-text-edit, .sec-text-copy, .sec-text-txt {
+.sec-text-edit, .sec-text-copy, .sec-text-copy-size, .sec-text-txt {
   flex-shrink: 0;
   font-family: var(--mono);
   font-size: 11px;
@@ -1743,8 +1743,18 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--accent);
   background: var(--bg-2);
 }
+/* v3.44.9: コピー(サイズ付き) - 少し目立たせる青系 */
+.sec-text-copy-size {
+  color: #1565c0;
+  border-color: #b7d3ea;
+}
+.sec-text-copy-size:hover {
+  border-color: #1565c0;
+  background: #e3f0fa;
+  color: #1565c0;
+}
 /* コピー・txt成功時の一瞬の表示 */
-.sec-text-copy.copied, .sec-text-txt.copied {
+.sec-text-copy.copied, .sec-text-copy-size.copied, .sec-text-txt.copied {
   background: var(--ok);
   color: #fff;
   border-color: var(--ok);
@@ -2740,10 +2750,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-add-item-btn {
   width: 100%;
   padding: 14px;
-  border: 2px dashed var(--accent);
+  border: 2px dashed #1565c0;
   border-radius: var(--radius);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: #e3f0fa;
+  color: #1565c0;
   font-size: 14px;
   font-weight: 600;
   font-family: var(--sans);
@@ -2752,7 +2762,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-add-item-btn:hover {
   border-style: solid;
   color: #fff;
-  background: var(--accent);
+  background: #1565c0;
 }
 .sec-add-item-menu {
   margin-top: 8px;
@@ -3412,6 +3422,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .sec-add-initial-btn {
   color: var(--accent) !important;
   border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
 }
 .sec-add-initial-btn:hover {
   background: var(--accent) !important;
