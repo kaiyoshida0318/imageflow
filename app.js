@@ -2127,6 +2127,7 @@ function renderSections(p) {
       <div class="sec-text-item">
         <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
+          <button class="sec-text-add" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" title="同じ位置にテキスト欄を1つ追加">+</button>
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
           <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="${txtTitle}">${txtLabel}</button>
@@ -2144,9 +2145,48 @@ function renderSections(p) {
       </div>`;
     };
 
+    // v3.44.0: isInitial(初期分析)の場合、完成品エリアをテキスト入力欄に置き換え
+    const isInitial = item.isInitial === true;
+    const initialTitleHtml = isInitial
+      ? `<div class="sec-initial-title" title="初期分析項目">初期分析</div>`
+      : "";
+    const finalSideHtml = isInitial
+      ? (() => {
+          const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : [""];
+          const inputs = arr.map((t, i) => `
+            <div class="sec-analysis-item">
+              <textarea class="sec-analysis-input" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" placeholder="分析結果を入力…"></textarea>
+              <div class="sec-analysis-btns">
+                <button class="sec-analysis-add" data-iid="${escapeHtml(item.iid)}" title="分析結果欄を1つ追加">+</button>
+                <button class="sec-analysis-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="この分析結果を削除" ${arr.length === 1 ? "disabled" : ""}>×</button>
+              </div>
+            </div>
+          `).join("");
+          return `
+        <div class="sec-side sec-side-analysis">
+          <div class="sec-side-label">分析結果</div>
+          <div class="sec-analysis-list">
+            ${inputs}
+          </div>
+        </div>`;
+        })()
+      : `
+        <div class="sec-side">
+          <div class="sec-side-label">完成品</div>
+          <div class="sec-images">
+            ${finalContent}
+            <div class="sec-dropzone${finalEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="final" title="クリックまたはドラッグ&ドロップでアップロード">
+              <span class="sec-dropzone-icon">⇪</span>
+              <span class="sec-dropzone-text">画像を<br>アップロード</span>
+            </div>
+            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="final" />
+          </div>
+        </div>`;
+
     return `
-    <div class="editor-section" data-iid="${escapeHtml(item.iid)}">
+    <div class="editor-section${isInitial ? ' editor-section-initial' : ''}" data-iid="${escapeHtml(item.iid)}">
       <div class="editor-section-content">
+        ${initialTitleHtml}
         ${textsBlockHtml("top")}
         <div class="sec-dual">
           <div class="sec-side">
@@ -2174,17 +2214,7 @@ function renderSections(p) {
             <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="material" />
           </div>
         </div>
-        <div class="sec-side">
-          <div class="sec-side-label">完成品</div>
-          <div class="sec-images">
-            ${finalContent}
-            <div class="sec-dropzone${finalEmpty ? " sec-dropzone-bar" : ""}" data-iid="${escapeHtml(item.iid)}" data-side="final" title="クリックまたはドラッグ&ドロップでアップロード">
-              <span class="sec-dropzone-icon">⇪</span>
-              <span class="sec-dropzone-text">画像を<br>アップロード</span>
-            </div>
-            <input class="sec-file-input" type="file" accept="image/*,*/*" multiple hidden data-iid="${escapeHtml(item.iid)}" data-side="final" />
-          </div>
-        </div>
+        ${finalSideHtml}
       </div>
       ${textsBlockHtml("bottom")}
       </div>
@@ -2301,6 +2331,40 @@ function renderSections(p) {
   // テキスト削除
   wrap.querySelectorAll(".sec-text-remove").forEach((btn) => {
     btn.addEventListener("click", () => removeSectionText(btn.dataset.iid, btn.dataset.pos, parseInt(btn.dataset.idx)));
+  });
+  // v3.44.0: テキスト欄追加(+)
+  wrap.querySelectorAll(".sec-text-add").forEach((btn) => {
+    btn.addEventListener("click", () => addSectionText(btn.dataset.iid, btn.dataset.pos));
+  });
+  // v3.44.0: 初期分析の分析結果テキスト
+  // .value に直接代入(HTMLパーサーを通さないので改行が確実に保持される)
+  wrap.querySelectorAll(".sec-analysis-input").forEach((ta) => {
+    const iid = ta.dataset.iid;
+    const idx = parseInt(ta.dataset.idx);
+    const p = getCurrentProduct();
+    if (p) {
+      const item = getItem(p, iid);
+      if (item && Array.isArray(item.analysisTexts)) {
+        ta.value = item.analysisTexts[idx] || "";
+      }
+    }
+    ta.addEventListener("blur", () => {
+      const p2 = getCurrentProduct();
+      if (!p2) return;
+      const item2 = getItem(p2, iid);
+      if (!item2) return;
+      if (!Array.isArray(item2.analysisTexts)) item2.analysisTexts = [];
+      if (item2.analysisTexts[idx] === ta.value) return;
+      item2.analysisTexts[idx] = ta.value;
+      saveData(`Update analysis: ${p2.name}`, mergeCurrentProduct(p2))
+        .catch((err) => alert("保存失敗: " + err.message));
+    });
+  });
+  wrap.querySelectorAll(".sec-analysis-add").forEach((btn) => {
+    btn.addEventListener("click", () => addAnalysisText(btn.dataset.iid));
+  });
+  wrap.querySelectorAll(".sec-analysis-remove").forEach((btn) => {
+    btn.addEventListener("click", () => removeAnalysisText(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
   // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
   wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
@@ -2897,6 +2961,64 @@ async function removeSectionText(iid, pos, idx) {
   arr.splice(idx, 1);
   try {
     await saveData(`Remove text in ${sectionLabelOf(item)}: ${p.name}`, mergeCurrentProduct(p));
+    renderSections(p);
+  } catch (err) {
+    alert("削除失敗: " + err.message);
+  }
+}
+
+// v3.44.0: テキスト欄を1つ追加(下に空欄を1個追加)
+async function addSectionText(iid, pos) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const arr = item[textArrName(pos)];
+  if (!Array.isArray(arr)) {
+    item[textArrName(pos)] = [];
+  }
+  item[textArrName(pos)].push("");
+  // 楽観的更新: すぐ再描画してから保存
+  renderSections(p);
+  // 追加した空欄にフォーカス
+  setTimeout(() => {
+    const inputs = document.querySelectorAll(`.sec-text-input[data-iid="${CSS.escape(iid)}"][data-pos="${pos}"]`);
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 30);
+  saveData(`Add text: ${p.name}`, mergeCurrentProduct(p))
+    .catch((err) => alert("追加の保存に失敗: " + err.message));
+}
+
+// v3.44.0: 初期分析 - 分析結果テキスト欄を追加
+async function addAnalysisText(iid) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.analysisTexts)) item.analysisTexts = [];
+  item.analysisTexts.push("");
+  renderSections(p);
+  // 追加した欄にフォーカス
+  setTimeout(() => {
+    const inputs = document.querySelectorAll(`.sec-analysis-input[data-iid="${CSS.escape(iid)}"]`);
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 30);
+  saveData(`Add analysis text: ${p.name}`, mergeCurrentProduct(p))
+    .catch((err) => alert("追加の保存に失敗: " + err.message));
+}
+
+// v3.44.0: 初期分析 - 分析結果テキスト欄を削除
+async function removeAnalysisText(iid, idx) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.analysisTexts)) return;
+  if (item.analysisTexts.length <= 1) return; // 最後の1個は残す
+  if (!confirm("この分析結果を削除しますか?")) return;
+  item.analysisTexts.splice(idx, 1);
+  try {
+    await saveData(`Remove analysis text: ${p.name}`, mergeCurrentProduct(p));
     renderSections(p);
   } catch (err) {
     alert("削除失敗: " + err.message);
@@ -3614,7 +3736,22 @@ async function saveProduct() {
       name,
       startDate,
       image: imgPath,
-      sectionItems: [{ iid: genId(), key: "free-" + genId(), textsTop: [""], textsBottom: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }],  // 空項目を1個だけ用意(あとは「＋項目を追加」で増やす)
+      sectionItems: [
+        // v3.44.0: 新規商品には最初に「初期分析」項目を追加(素材はそのまま、完成品はテキスト入力)
+        {
+          iid: genId(),
+          key: "initial-" + genId(),
+          isInitial: true,          // 「初期分析」フラグ(通常と違うレイアウト)
+          title: "初期分析",
+          textsTop: [""],
+          textsBottom: [""],
+          images: [], files: [],
+          imagesFinal: [], filesFinal: [],
+          analysisTexts: [""]        // 分析結果テキスト(複数入力可)
+        },
+        // 通常の空項目
+        { iid: genId(), key: "free-" + genId(), textsTop: [""], textsBottom: [""], images: [], files: [], imagesFinal: [], filesFinal: [] }
+      ],
       createdAt: new Date().toISOString()
     };
 
