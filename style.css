@@ -3389,6 +3389,34 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   margin-bottom: 10px;
   border-radius: 0 6px 6px 0;
 }
+/* v3.44.5: 基本欄ラベル(グレー系で控えめに) */
+.sec-basic-title {
+  color: var(--ink-soft);
+  border-left-color: var(--ink-soft);
+}
+
+/* v3.44.5: 項目追加エリア(基本欄/初期分析選択) */
+.sec-add-item-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sec-add-item-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.sec-add-initial-btn {
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.sec-add-initial-btn:hover {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
 
 /* テキスト欄の + 追加ボタン */
 .sec-text-add {
