@@ -3410,7 +3410,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 4px;
   justify-content: flex-start;
 }
-.sec-analysis-add, .sec-analysis-remove, .sec-analysis-edit {
+.sec-analysis-add, .sec-analysis-remove, .sec-analysis-edit, .sec-analysis-newedit {
   width: 30px;
   height: 30px;
   font-size: 12px;
@@ -3425,7 +3425,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   justify-content: center;
 }
-.sec-analysis-edit {
+.sec-analysis-edit,
+.sec-analysis-newedit {
   width: auto;
   padding: 0 10px;
   font-size: 11px;
@@ -3435,6 +3436,16 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: var(--accent);
   color: var(--accent);
   background: var(--bg-2);
+}
+/* 新編集: 少し目立たせるため紫系 */
+.sec-analysis-newedit {
+  color: #6a1b9a;
+  border-color: #d0c0dc;
+}
+.sec-analysis-newedit:hover {
+  border-color: #6a1b9a;
+  background: #f3e5f5;
+  color: #6a1b9a;
 }
 .sec-analysis-add {
   color: var(--accent);
