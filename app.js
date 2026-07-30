@@ -2168,6 +2168,7 @@ function renderSections(p) {
               <textarea class="sec-analysis-input" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" placeholder="分析結果を入力…"></textarea>
               <div class="sec-analysis-btns">
                 <button class="sec-analysis-edit" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="大きい画面で編集">編集</button>
+                <button class="sec-analysis-newedit" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="別ウインドウで編集(元画面を見ながら作業可)">新編集</button>
                 ${addBtn}
                 <button class="sec-analysis-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="この分析結果を削除" ${arr.length === 1 ? "disabled" : ""}>×</button>
               </div>
@@ -2381,6 +2382,10 @@ function renderSections(p) {
   // v3.44.2: 分析結果の編集(大画面表示)
   wrap.querySelectorAll(".sec-analysis-edit").forEach((btn) => {
     btn.addEventListener("click", () => openAnalysisFullscreen(btn.dataset.iid, parseInt(btn.dataset.idx)));
+  });
+  // v3.44.3: 分析結果の新編集(別ウインドウで編集: 元画面を見ながら操作可)
+  wrap.querySelectorAll(".sec-analysis-newedit").forEach((btn) => {
+    btn.addEventListener("click", () => openAnalysisNewWindow(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
   // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
   wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
@@ -2830,6 +2835,123 @@ function openAnalysisFullscreen(iid, idx) {
     area.setSelectionRange(0, 0);
     area.scrollTop = 0;
   }, 30);
+}
+
+// v3.44.3: 分析結果を別ウインドウで編集(元画面を見ながら並行作業できる)
+// postMessage で「保存」ボタン押下時に親ウインドウへ内容を送り返す
+function openAnalysisNewWindow(iid, idx) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : null;
+  if (!arr || arr[idx] === undefined) return;
+  const text = arr[idx] || "";
+  // 別ウインドウ用HTMLを生成(サイズは中央にゆったり)
+  const editorHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>分析結果の編集 - ${escapeHtml(p.name)}</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; background: #f7f5ef; color: #2b2926; }
+  .wrap { display: flex; flex-direction: column; height: 100%; padding: 16px; gap: 12px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0; color: #2b2926; }
+  .meta { font-size: 11px; color: #7c7972; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  textarea { flex: 1; width: 100%; padding: 14px 16px; border: 1px solid #d3ccbf; border-radius: 8px; background: #fff; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; line-height: 1.7; color: #2b2926; resize: none; }
+  textarea:focus { outline: none; border-color: #c8451c; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .status { flex: 1; font-size: 12px; color: #7c7972; }
+  .status.saved { color: #2f6d4f; }
+  .status.err { color: #c2185b; }
+  button { padding: 8px 16px; font-size: 13px; font-weight: 600; border: 1px solid #d3ccbf; border-radius: 6px; background: #fff; color: #2b2926; cursor: pointer; transition: all 0.15s; }
+  button:hover { background: #efeae0; }
+  button.primary { background: #2b2926; color: #fff; border-color: #2b2926; }
+  button.primary:hover { background: #c8451c; border-color: #c8451c; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .hint { font-size: 10.5px; color: #a09b91; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>分析結果の編集</h1>
+    <div class="meta">${escapeHtml(p.name)} / #${idx + 1}</div>
+  </div>
+  <textarea id="ta" placeholder="分析結果を入力…" autofocus></textarea>
+  <div class="actions">
+    <span class="status" id="status">未保存の変更を書いてください</span>
+    <span class="hint">Ctrl+S で保存 / Ctrl+Enterでも保存</span>
+    <button id="save-btn" class="primary">💾 保存して反映</button>
+  </div>
+</div>
+<script>
+  const OPENER = window.opener;
+  const IID = ${JSON.stringify(iid)};
+  const IDX = ${JSON.stringify(idx)};
+  const INIT = ${JSON.stringify(text)};
+  const ta = document.getElementById("ta");
+  const statusEl = document.getElementById("status");
+  const saveBtn = document.getElementById("save-btn");
+  ta.value = INIT;
+  ta.focus();
+  ta.setSelectionRange(INIT.length, INIT.length);
+
+  let lastSaved = INIT;
+  function markDirty() {
+    if (ta.value === lastSaved) {
+      statusEl.textContent = "変更なし";
+      statusEl.className = "status";
+    } else {
+      statusEl.textContent = "未保存の変更あり";
+      statusEl.className = "status";
+    }
+  }
+  ta.addEventListener("input", markDirty);
+
+  function save() {
+    if (!OPENER || OPENER.closed) {
+      statusEl.textContent = "✗ 元のウインドウが閉じています。コピーして手動で貼り付けてください。";
+      statusEl.className = "status err";
+      return;
+    }
+    saveBtn.disabled = true;
+    statusEl.textContent = "保存中…";
+    statusEl.className = "status";
+    try {
+      OPENER.postMessage({ type: "analysis-save", iid: IID, idx: IDX, value: ta.value }, "*");
+      lastSaved = ta.value;
+      statusEl.textContent = "✓ 保存しました(元画面に反映済み)";
+      statusEl.className = "status saved";
+      setTimeout(() => { saveBtn.disabled = false; }, 500);
+    } catch (e) {
+      statusEl.textContent = "✗ " + e.message;
+      statusEl.className = "status err";
+      saveBtn.disabled = false;
+    }
+  }
+  saveBtn.addEventListener("click", save);
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "Enter")) {
+      e.preventDefault();
+      save();
+    }
+  });
+  markDirty();
+</script>
+</body>
+</html>`;
+  // 新しいウインドウを開く。エディタサイズを指定
+  const w = window.open("", "_blank", "width=900,height=700,resizable=yes,scrollbars=yes");
+  if (!w) {
+    alert("別ウインドウを開けませんでした。ポップアップがブロックされている可能性があります。");
+    return;
+  }
+  w.document.open();
+  w.document.write(editorHtml);
+  w.document.close();
 }
 
 // テキストの中身をクリップボードにコピー(押すと一瞬「✓」表示)
@@ -3988,6 +4110,26 @@ function bindEvents() {
 
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", (e) => e.preventDefault());
+
+  // v3.44.3: 別ウインドウ(新編集)からのpostMessageを受信して分析結果を更新
+  window.addEventListener("message", async (e) => {
+    const data = e.data;
+    if (!data || data.type !== "analysis-save") return;
+    const { iid, idx, value } = data;
+    const p = getCurrentProduct();
+    if (!p) return;
+    const item = getItem(p, iid);
+    if (!item) return;
+    if (!Array.isArray(item.analysisTexts)) item.analysisTexts = [];
+    if (item.analysisTexts[idx] === value) return;
+    item.analysisTexts[idx] = value; // 改行そのまま保持
+    try {
+      await saveData(`Update analysis (new window): ${p.name}`, mergeCurrentProduct(p));
+      renderSections(p);
+    } catch (err) {
+      alert("別ウインドウからの保存に失敗: " + err.message);
+    }
+  });
 
   // ---------- マインドマップ:新規追加・操作 ----------
   $("btn-add-mindmap").addEventListener("click", makeNewMindmap);
