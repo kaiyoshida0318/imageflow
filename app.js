@@ -2123,11 +2123,15 @@ function renderSections(p) {
       const val = (t !== undefined && t !== null) ? escapeHtml(String(t)) : "";
       const txtLabel = pos === "bottom" ? "回答文.txt" : "入力文.txt";
       const txtTitle = pos === "bottom" ? "この回答文を.txtでダウンロード" : "この入力文を.txtでダウンロード";
+      // v3.44.1: 上(top)には+を出さず、下(bottom)だけに+を出す
+      const addBtnHtml = pos === "bottom"
+        ? `<button class="sec-text-add" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" title="同じ位置にテキスト欄を1つ追加">+</button>`
+        : "";
       return `
       <div class="sec-text-item">
         <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
-          <button class="sec-text-add" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" title="同じ位置にテキスト欄を1つ追加">+</button>
+          ${addBtnHtml}
           <button class="sec-text-edit" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="大きい画面で編集">編集</button>
           <button class="sec-text-copy" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="この文章をコピー">コピー</button>
           <button class="sec-text-txt" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" title="${txtTitle}">${txtLabel}</button>
@@ -2153,15 +2157,23 @@ function renderSections(p) {
     const finalSideHtml = isInitial
       ? (() => {
           const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : [""];
-          const inputs = arr.map((t, i) => `
+          const lastIdx = arr.length - 1;
+          const inputs = arr.map((t, i) => {
+            // v3.44.1: 最下段だけに + を出す
+            const addBtn = i === lastIdx
+              ? `<button class="sec-analysis-add" data-iid="${escapeHtml(item.iid)}" title="分析結果欄を1つ追加">+</button>`
+              : "";
+            return `
             <div class="sec-analysis-item">
               <textarea class="sec-analysis-input" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" placeholder="分析結果を入力…"></textarea>
               <div class="sec-analysis-btns">
-                <button class="sec-analysis-add" data-iid="${escapeHtml(item.iid)}" title="分析結果欄を1つ追加">+</button>
+                <button class="sec-analysis-edit" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="大きい画面で編集">編集</button>
+                ${addBtn}
                 <button class="sec-analysis-remove" data-iid="${escapeHtml(item.iid)}" data-idx="${i}" title="この分析結果を削除" ${arr.length === 1 ? "disabled" : ""}>×</button>
               </div>
             </div>
-          `).join("");
+          `;
+          }).join("");
           return `
         <div class="sec-side sec-side-analysis">
           <div class="sec-side-label">分析結果</div>
@@ -2365,6 +2377,10 @@ function renderSections(p) {
   });
   wrap.querySelectorAll(".sec-analysis-remove").forEach((btn) => {
     btn.addEventListener("click", () => removeAnalysisText(btn.dataset.iid, parseInt(btn.dataset.idx)));
+  });
+  // v3.44.2: 分析結果の編集(大画面表示)
+  wrap.querySelectorAll(".sec-analysis-edit").forEach((btn) => {
+    btn.addEventListener("click", () => openAnalysisFullscreen(btn.dataset.iid, parseInt(btn.dataset.idx)));
   });
   // 1行inputでその場編集 → フォーカスを外したら(blur)保存。Enterでも確定。
   wrap.querySelectorAll(".sec-text-input").forEach((inp) => {
@@ -2784,10 +2800,30 @@ function openTextFullscreen(iid, pos, idx) {
   if (!item) return;
   const arr = item[textArrName(pos)];
   if (!arr || arr[idx] === undefined) return;
-  fsEditing = { iid, pos, idx };
+  fsEditing = { kind: "text", iid, pos, idx };
   $("text-fullscreen-title").textContent = "テキスト";
   const area = $("text-fullscreen-area");
   area.value = arr[idx];
+  $("text-fullscreen").style.display = "flex";
+  setTimeout(() => {
+    area.focus();
+    area.setSelectionRange(0, 0);
+    area.scrollTop = 0;
+  }, 30);
+}
+
+// v3.44.2: 分析結果を大画面編集
+function openAnalysisFullscreen(iid, idx) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  const arr = Array.isArray(item.analysisTexts) ? item.analysisTexts : null;
+  if (!arr || arr[idx] === undefined) return;
+  fsEditing = { kind: "analysis", iid, idx };
+  $("text-fullscreen-title").textContent = "分析結果";
+  const area = $("text-fullscreen-area");
+  area.value = arr[idx] || "";
   $("text-fullscreen").style.display = "flex";
   setTimeout(() => {
     area.focus();
@@ -2890,11 +2926,30 @@ function downloadSectionText(btn) {
 async function closeTextFullscreen() {
   if (!fsEditing) { $("text-fullscreen").style.display = "none"; return; }
   const p = getCurrentProduct();
-  const { iid, pos, idx } = fsEditing;
-  const newVal = $("text-fullscreen-area").value.trim();
+  // v3.44.2: 分析結果編集は改行を保持するため trim() しない、テキスト編集は従来通り trim()
+  const raw = $("text-fullscreen-area").value;
+  const editing = fsEditing;
   $("text-fullscreen").style.display = "none";
   fsEditing = null;
   if (!p) return;
+  if (editing.kind === "analysis") {
+    const { iid, idx } = editing;
+    const item = getItem(p, iid);
+    if (!item) return;
+    if (!Array.isArray(item.analysisTexts)) item.analysisTexts = [];
+    if (item.analysisTexts[idx] === raw) { renderSections(p); return; }
+    item.analysisTexts[idx] = raw; // 改行そのまま保持
+    try {
+      await saveData(`Update analysis (fullscreen): ${p.name}`, mergeCurrentProduct(p));
+    } catch (err) {
+      alert("保存失敗: " + err.message);
+    }
+    renderSections(p);
+    return;
+  }
+  // 通常のテキスト編集(text)
+  const { iid, pos, idx } = editing;
+  const newVal = raw.trim();
   const item = getItem(p, iid);
   const arr = item ? item[textArrName(pos)] : null;
   if (!item || !arr || arr[idx] === undefined) return;
@@ -3197,8 +3252,8 @@ function rivalRevPlaceholderSvgBase64() {
   <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
   <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
     <text x="300" y="272" font-size="98" font-weight="800" fill="#d81b60">rev</text>
-    <text x="300" y="360" font-size="42" font-weight="700">ライバル</text>
-    <text x="300" y="422" font-size="42" font-weight="700">レビュー</text>
+    <text x="300" y="362" font-size="45" font-weight="700">ライバル</text>
+    <text x="300" y="425" font-size="45" font-weight="700">レビュー</text>
   </g>
 </svg>`;
   return b64encode(svg);
@@ -3214,8 +3269,8 @@ function ownRevPlaceholderSvgBase64() {
   <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
   <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
     <text x="300" y="272" font-size="98" font-weight="800" fill="#1565c0">rev</text>
-    <text x="300" y="360" font-size="42" font-weight="700">自社</text>
-    <text x="300" y="422" font-size="42" font-weight="700">レビュー</text>
+    <text x="300" y="362" font-size="45" font-weight="700">自社</text>
+    <text x="300" y="425" font-size="45" font-weight="700">レビュー</text>
   </g>
 </svg>`;
   return b64encode(svg);
@@ -3231,8 +3286,8 @@ function pastLpPlaceholderSvgBase64() {
   <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
   <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
     <text x="300" y="272" font-size="110" font-weight="800" fill="#6a1b9a">LP</text>
-    <text x="300" y="360" font-size="42" font-weight="700">自社の</text>
-    <text x="300" y="422" font-size="42" font-weight="700">過去LP</text>
+    <text x="300" y="362" font-size="45" font-weight="700">自社の</text>
+    <text x="300" y="425" font-size="45" font-weight="700">過去LP</text>
   </g>
 </svg>`;
   return b64encode(svg);
