@@ -2127,8 +2127,22 @@ function renderSections(p) {
       const addBtnHtml = pos === "bottom"
         ? `<button class="sec-text-add" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" title="同じ位置にテキスト欄を1つ追加">+</button>`
         : "";
+      // v3.44.4: 初期分析の下段(bottom)だけ、入力欄の左側にサイズ選択トグル(750*750 / 750*1230)
+      const isAnalysisBottom = (item.isInitial === true && pos === "bottom");
+      let sizeToggleHtml = "";
+      if (isAnalysisBottom) {
+        const sizes = Array.isArray(item.analysisSizes) ? item.analysisSizes : [];
+        const curSize = sizes[i] || "750x750";  // デフォルト
+        const isA = curSize === "750x750";
+        sizeToggleHtml = `
+          <div class="sec-size-toggle" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}">
+            <button type="button" class="sec-size-opt${isA ? " active" : ""}" data-size="750x750" title="この回答文は画像用(750×750)として出力">750*750</button>
+            <button type="button" class="sec-size-opt${!isA ? " active" : ""}" data-size="750x1230" title="この回答文は文章用(750×1230)として出力">750*1230</button>
+          </div>`;
+      }
       return `
       <div class="sec-text-item">
+        ${sizeToggleHtml}
         <input class="sec-text-input" type="text" value="${val}" placeholder="テキストを入力…" data-iid="${escapeHtml(item.iid)}" data-pos="${pos}" data-idx="${i}" />
         <div class="sec-text-btns">
           ${addBtnHtml}
@@ -2426,6 +2440,17 @@ function renderSections(p) {
   // 「.txt」ボタンで文章をテキストファイルとしてダウンロード
   wrap.querySelectorAll(".sec-text-txt").forEach((btn) => {
     btn.addEventListener("click", () => downloadSectionText(btn));
+  });
+  // v3.44.4: 初期分析bottom - サイズトグル(750x750 / 750x1230)
+  wrap.querySelectorAll(".sec-size-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const wrapEl = btn.closest(".sec-size-toggle");
+      if (!wrapEl) return;
+      const iid = wrapEl.dataset.iid;
+      const idx = parseInt(wrapEl.dataset.idx);
+      const size = btn.dataset.size;
+      setAnalysisSize(iid, idx, size);
+    });
   });
   // 項目ごと削除
   wrap.querySelectorAll(".sec-remove-item").forEach((btn) => {
@@ -3016,6 +3041,7 @@ function safeFileName(name) {
 
 // 「.txt」ボタン: 文章をテキストファイルとしてダウンロード。
 // ファイル名は「商品名-入力文/回答文-通し番号.txt」
+// v3.44.4: 初期分析itemのbottomは、選択されたサイズに応じて先頭に指示文を付与
 function downloadSectionText(btn) {
   const p = getCurrentProduct();
   if (!p) return;
@@ -3027,9 +3053,21 @@ function downloadSectionText(btn) {
   const text = (arr && arr[idx] !== undefined) ? String(arr[idx]) : "";
   const serial = textSerialNumber(p, item.iid, pos, idx);
   const label = pos === "bottom" ? "回答文" : "入力文";
-  const filename = `${safeFileName(p.name)}-${label}-${serial}.txt`;
+  // 初期分析のbottomなら、選択されたサイズに応じて先頭に指示文を付ける
+  let bodyText = text;
+  let sizeSuffix = "";
+  if (item.isInitial === true && pos === "bottom") {
+    const sizes = Array.isArray(item.analysisSizes) ? item.analysisSizes : [];
+    const size = sizes[idx] || "750x750";
+    const prefix = size === "750x1230"
+      ? "下記文章を750*1230でつくって\n\n"
+      : "下記画像を750*750でつくって\n\n";
+    bodyText = prefix + text;
+    sizeSuffix = `-${size}`;
+  }
+  const filename = `${safeFileName(p.name)}-${label}-${serial}${sizeSuffix}.txt`;
   // BOM付きUTF-8でダウンロード(Windowsのメモ帳で文字化けを防ぐ)
-  const blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + bodyText], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -3043,6 +3081,22 @@ function downloadSectionText(btn) {
   btn.textContent = "✓";
   btn.classList.add("copied");
   setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1000);
+}
+
+// v3.44.4: 分析用サイズ選択を保存(楽観的更新)
+async function setAnalysisSize(iid, idx, size) {
+  const p = getCurrentProduct();
+  if (!p) return;
+  const item = getItem(p, iid);
+  if (!item) return;
+  if (!Array.isArray(item.analysisSizes)) item.analysisSizes = [];
+  // 該当idxまで配列を拡張(足りない場所はundefinedのまま=デフォルト750x750)
+  while (item.analysisSizes.length <= idx) item.analysisSizes.push(undefined);
+  if (item.analysisSizes[idx] === size) return;
+  item.analysisSizes[idx] = size;
+  renderSections(p);
+  saveData(`Set analysis size: ${p.name}`, mergeCurrentProduct(p))
+    .catch((err) => alert("サイズ選択の保存に失敗: " + err.message));
 }
 
 async function closeTextFullscreen() {
