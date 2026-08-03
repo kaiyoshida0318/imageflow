@@ -1,6 +1,48 @@
 {
   "products": [
     {
+      "id": "msd0ucemea434b",
+      "name": "PS5キャップ",
+      "startDate": "26-0803",
+      "image": "images/msd0ucemea434b.png",
+      "sectionItems": [
+        {
+          "iid": "msd0uef5mh67ui",
+          "key": "initial-msd0uef5clc2fm",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ]
+        },
+        {
+          "iid": "msd0uef5zqc62p",
+          "key": "free-msd0uef5qkgn3q",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": []
+        }
+      ],
+      "createdAt": "2026-08-03T09:23:14.177Z"
+    },
+    {
       "id": "ms71y6ru2flbgf",
       "name": "防水テープ",
       "startDate": "26-0730",
