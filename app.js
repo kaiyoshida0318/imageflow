@@ -2229,6 +2229,7 @@ function renderSections(p) {
                 <span class="sec-side-label-btns sec-side-label-btns-row">
                   <button class="sec-use-rivalrev" data-iid="${escapeHtml(item.iid)}" title="「ライバルレビュー」のプレースホルダを素材に追加">ライバルレビュー</button>
                   <button class="sec-use-ownrev" data-iid="${escapeHtml(item.iid)}" title="「自社レビュー」のプレースホルダを素材に追加">自社レビュー</button>
+                  <button class="sec-use-rivalimg" data-iid="${escapeHtml(item.iid)}" title="「ライバル画像」のプレースホルダを素材に追加">ライバル画像</button>
                   <button class="sec-use-pastlp" data-iid="${escapeHtml(item.iid)}" title="「自社の過去LP」のプレースホルダを素材に追加">自社の過去LP</button>
                 </span>
                 <span class="sec-side-label-btns sec-side-label-btns-row">
@@ -2318,6 +2319,9 @@ function renderSections(p) {
   });
   wrap.querySelectorAll(".sec-use-ownrev").forEach((btn) => {
     btn.addEventListener("click", () => addOwnRevPlaceholder(btn.dataset.iid));
+  });
+  wrap.querySelectorAll(".sec-use-rivalimg").forEach((btn) => {
+    btn.addEventListener("click", () => addRivalImgPlaceholder(btn.dataset.iid));
   });
   wrap.querySelectorAll(".sec-use-pastlp").forEach((btn) => {
     btn.addEventListener("click", () => addPastLpPlaceholder(btn.dataset.iid));
@@ -3562,6 +3566,23 @@ function ownRevPlaceholderSvgBase64() {
 
 async function addOwnRevPlaceholder(iid) {
   await _addPlaceholderCommon(iid, ownRevPlaceholderSvgBase64(), "ownrev", "own review");
+}
+
+// v3.44.10: 「ライバル画像」プレースホルダ(緑系「img」)
+function rivalImgPlaceholderSvgBase64() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect x="8" y="8" width="584" height="584" rx="14" fill="#eeeae0" stroke="#8a867d" stroke-width="3" stroke-dasharray="14 10"/>
+  <g fill="#4a4844" font-family="'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif" text-anchor="middle">
+    <text x="300" y="272" font-size="98" font-weight="800" fill="#2e9e5b">img</text>
+    <text x="300" y="362" font-size="45" font-weight="700">ライバル</text>
+    <text x="300" y="425" font-size="45" font-weight="700">画像</text>
+  </g>
+</svg>`;
+  return b64encode(svg);
+}
+
+async function addRivalImgPlaceholder(iid) {
+  await _addPlaceholderCommon(iid, rivalImgPlaceholderSvgBase64(), "rivalimg", "rival image");
 }
 
 // v3.43.0: 「自社の過去LP」プレースホルダ(紫系「LP」)
