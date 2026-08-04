@@ -60,21 +60,6 @@
           ]
         },
         {
-          "iid": "msd0uef5zqc62p",
-          "key": "free-msd0uef5qkgn3q",
-          "textsTop": [
-            ""
-          ],
-          "textsBottom": [
-            ""
-          ],
-          "images": [],
-          "files": [],
-          "imagesFinal": [],
-          "filesFinal": [],
-          "imagesFinalChecked": []
-        },
-        {
           "iid": "msdyvv9bkxi90m",
           "key": "initial-msdyvv9bkxi90m",
           "isInitial": true,
@@ -92,6 +77,21 @@
           "analysisTexts": [
             ""
           ],
+          "imagesFinalChecked": []
+        },
+        {
+          "iid": "msd0uef5zqc62p",
+          "key": "free-msd0uef5qkgn3q",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
           "imagesFinalChecked": []
         }
       ],
