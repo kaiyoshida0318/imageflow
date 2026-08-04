@@ -73,6 +73,26 @@
           "imagesFinal": [],
           "filesFinal": [],
           "imagesFinalChecked": []
+        },
+        {
+          "iid": "msdyvv9bkxi90m",
+          "key": "initial-msdyvv9bkxi90m",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-03T09:23:14.177Z"
