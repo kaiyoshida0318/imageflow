@@ -915,6 +915,8 @@ function openProjectModal(id) {
   activeProjectId = id;
   $("project-name").value = pr.name || "";
   $("project-body").value = pr.body || "";  // 改行保持のため .value 代入
+  $("project-notes").value = pr.notes || ""; // v3.45.1: メモ欄
+  $("project-image-url-input").value = "";
   renderProjectImages(pr);
   renderProjectUrls(pr);
   $("project-modal").style.display = "flex";
@@ -931,7 +933,7 @@ function closeProjectModal() {
   renderProjects();
 }
 
-// 画像一覧を描画
+// 画像一覧を描画(外部URLとGitHub内両対応)
 function renderProjectImages(pr) {
   const wrap = $("project-images");
   const imgs = Array.isArray(pr.images) ? pr.images : [];
@@ -939,13 +941,27 @@ function renderProjectImages(pr) {
     wrap.innerHTML = "";
     return;
   }
-  wrap.innerHTML = imgs.map((path, i) => `
-    <div class="project-image-item" data-idx="${i}">
-      <img data-load-path="${escapeHtml(path)}" alt="" />
-      <button class="project-image-remove" data-idx="${i}" title="この画像を削除">×</button>
-    </div>
-  `).join("");
-  // 画像を非同期ロード
+  wrap.innerHTML = imgs.map((item, i) => {
+    // v3.45.1: 画像は 文字列(GitHub内パス) or {isExternal:true, url:外部URL} の2種類
+    const isExternal = typeof item === "object" && item && item.isExternal === true;
+    if (isExternal) {
+      const url = String(item.url || "");
+      return `
+        <div class="project-image-item" data-idx="${i}" title="外部URL">
+          <img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" />
+          <span class="project-image-badge">外部</span>
+          <button class="project-image-remove" data-idx="${i}" title="この画像を削除">×</button>
+        </div>`;
+    } else {
+      const path = String(item);
+      return `
+        <div class="project-image-item" data-idx="${i}">
+          <img data-load-path="${escapeHtml(path)}" alt="" />
+          <button class="project-image-remove" data-idx="${i}" title="この画像を削除">×</button>
+        </div>`;
+    }
+  }).join("");
+  // GitHub内画像を非同期ロード
   wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
     fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
       if (url) img.src = url;
@@ -957,6 +973,20 @@ function renderProjectImages(pr) {
       removeProjectImage(parseInt(btn.dataset.idx));
     });
   });
+}
+
+// v3.45.1: 画像URLから登録(外部URLをそのまま保存、ブラウザで直接読み込む)
+function addProjectImageUrl() {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  const url = ($("project-image-url-input").value || "").trim();
+  if (!url) { alert("画像URLを入力してください"); return; }
+  if (!/^https?:\/\//i.test(url)) { alert("http:// または https:// で始まるURLを入力してください"); return; }
+  if (!Array.isArray(pr.images)) pr.images = [];
+  pr.images.push({ isExternal: true, url });
+  $("project-image-url-input").value = "";
+  renderProjectImages(pr);
+  saveProjects();
 }
 
 // URL一覧を描画
@@ -1075,6 +1105,63 @@ function deleteCurrentProject() {
   $("project-modal").style.display = "none";
   saveProjects();
   renderProjects();
+}
+
+// v3.45.1: Markdownでエクスポート(本文+ライバルURL+メモ+画像URL、コピペしやすい形式)
+function exportCurrentProjectAsMarkdown() {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  // フォーカス中入力欄をflushしてから最新値を取得
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  const lines = [];
+  lines.push(`# ${pr.name || "(無題)"}`);
+  lines.push("");
+  if (pr.body && pr.body.trim()) {
+    lines.push("## 本文");
+    lines.push("");
+    lines.push(pr.body);
+    lines.push("");
+  }
+  const urls = Array.isArray(pr.urls) ? pr.urls.filter((u) => (u.url || "").trim()) : [];
+  if (urls.length) {
+    lines.push("## ライバルURL");
+    lines.push("");
+    for (const u of urls) {
+      const label = (u.label || "").trim();
+      lines.push(label ? `- [${label}](${u.url})` : `- ${u.url}`);
+    }
+    lines.push("");
+  }
+  if (pr.notes && pr.notes.trim()) {
+    lines.push("## メモ(価格・商品構成など)");
+    lines.push("");
+    lines.push(pr.notes);
+    lines.push("");
+  }
+  const imgs = Array.isArray(pr.images) ? pr.images : [];
+  if (imgs.length) {
+    lines.push("## 画像");
+    lines.push("");
+    for (const it of imgs) {
+      if (typeof it === "object" && it && it.isExternal === true) {
+        lines.push(`- ${it.url}`);
+      } else {
+        lines.push(`- (内部画像) ${it}`);
+      }
+    }
+    lines.push("");
+  }
+  const md = lines.join("\n");
+  const filename = `${safeFileName(pr.name || "project")}.md`;
+  const blob = new Blob(["\uFEFF" + md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ==============================================
@@ -4618,8 +4705,43 @@ function bindEvents() {
         alert("保存失敗: " + err.message);
       });
   });
+  // v3.45.1: 保存(閉じる)
+  $("btn-project-save-close").addEventListener("click", () => {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const btn = $("btn-project-save-close");
+    const orig = btn.textContent;
+    btn.textContent = "保存中…";
+    btn.disabled = true;
+    saveData("Save project & close", () => products.slice())
+      .then(() => {
+        btn.textContent = orig;
+        btn.disabled = false;
+        closeProjectModal();
+      })
+      .catch((err) => {
+        btn.textContent = orig;
+        btn.disabled = false;
+        alert("保存失敗: " + err.message);
+      });
+  });
+  // v3.45.1: エクスポート(Markdown)
+  $("btn-project-export").addEventListener("click", exportCurrentProjectAsMarkdown);
   $("btn-project-delete").addEventListener("click", deleteCurrentProject);
   $("btn-project-add-url").addEventListener("click", addProjectUrl);
+  // v3.45.1: 画像URLから追加
+  $("btn-project-image-url-add").addEventListener("click", addProjectImageUrl);
+  $("project-image-url-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addProjectImageUrl(); }
+  });
+  // v3.45.1: メモ欄 blur → 保存(改行保持)
+  $("project-notes").addEventListener("blur", () => {
+    const pr = projects.find((x) => x.id === activeProjectId);
+    if (!pr) return;
+    const v = $("project-notes").value;
+    if (pr.notes === v) return;
+    pr.notes = v;
+    saveProjects();
+  });
   // プロジェクト名 blur → 保存
   $("project-name").addEventListener("blur", () => {
     const pr = projects.find((x) => x.id === activeProjectId);
