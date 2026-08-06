@@ -855,31 +855,76 @@ function saveTemplates() {
 // プロジェクト機能 (v3.45.0)
 // ==============================================
 
-// プロジェクト一覧をカード形式で描画
+// プロジェクト一覧を商品タブと同じ形式(左に情報+URL+メモ、右に画像サムネ)で描画
 function renderProjects() {
   const wrap = $("projects-grid");
   if (!wrap) return;
   if (!Array.isArray(projects) || projects.length === 0) {
-    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center;grid-column:1/-1"><div class="empty-illust">📁</div><p>プロジェクトがまだありません。<br>上の <b>+</b> から追加しましょう。</p></div>';
+    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center"><div class="empty-illust">📁</div><p>プロジェクトがまだありません。<br>上の <b>+</b> から追加しましょう。</p></div>';
     return;
   }
-  const cards = projects.map((pr) => {
-    const bodyPreview = (pr.body || "").replace(/\s+/g, " ").slice(0, 100);
-    const imgCount = Array.isArray(pr.images) ? pr.images.length : 0;
-    const urlCount = Array.isArray(pr.urls) ? pr.urls.filter((u) => (u.url || "").trim()).length : 0;
+  // v3.45.6: 商品ギャラリーと同じ「gallery-row」形式で表示
+  wrap.className = "gallery-rows thumb-tall project-rows";
+  wrap.innerHTML = projects.map((pr) => {
+    const imgs = Array.isArray(pr.images) ? pr.images : [];
+    // 各画像を(内部/外部)両対応でサムネ生成
+    const thumbsHtml = imgs.length
+      ? imgs.map((it) => {
+          if (typeof it === "object" && it && it.isExternal === true) {
+            return `<img class="row-thumb" src="${escapeHtml(it.url || "")}" alt="" referrerpolicy="no-referrer" data-external="1" />`;
+          }
+          return `<img class="row-thumb" data-load-path="${escapeHtml(String(it))}" alt="" />`;
+        }).join("")
+      : '<div class="row-thumbs-empty">画像なし</div>';
+    // ライバルURL一覧(空でないものだけ)
+    const urls = Array.isArray(pr.urls) ? pr.urls.filter((u) => (u.url || "").trim()) : [];
+    const urlsHtml = urls.length
+      ? `<div class="project-row-urls">${urls.slice(0, 5).map((u) => {
+          const label = (u.label || "").trim();
+          const url = String(u.url || "");
+          const shortUrl = url.length > 40 ? url.slice(0, 40) + "…" : url;
+          const disp = label ? `${escapeHtml(label)}` : escapeHtml(shortUrl);
+          return `<a class="project-row-url" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(url)}">🔗 ${disp}</a>`;
+        }).join("")}${urls.length > 5 ? `<span class="project-row-more">+${urls.length - 5}</span>` : ""}</div>`
+      : `<div class="project-row-urls project-row-empty">URLなし</div>`;
+    // メモプレビュー(改行込みで2行程度)
+    const notesRaw = (pr.notes || "").trim();
+    const notesHtml = notesRaw
+      ? `<div class="project-row-notes">${escapeHtml(notesRaw)}</div>`
+      : `<div class="project-row-notes project-row-empty">メモなし</div>`;
     return `
-      <div class="project-card" data-id="${escapeHtml(pr.id)}">
-        <div class="project-card-name">${escapeHtml(pr.name || "(無題)")}</div>
-        <div class="project-card-preview">${escapeHtml(bodyPreview) || '<span style="color:var(--ink-mute);font-style:italic">(本文なし)</span>'}</div>
-        <div class="project-card-meta">
-          <span>🖼 ${imgCount}枚</span>
-          <span>🔗 ${urlCount}件</span>
-        </div>
-      </div>`;
+    <div class="gallery-row project-row" data-id="${escapeHtml(pr.id)}">
+      <div class="row-info">
+        <div class="row-start-date">プロジェクト</div>
+        <div class="row-name">${escapeHtml(pr.name || "(無題)")}</div>
+        <div class="project-row-meta-label">ライバルURL</div>
+        ${urlsHtml}
+        <div class="project-row-meta-label">メモ</div>
+        ${notesHtml}
+        <button class="row-open-btn" data-id="${escapeHtml(pr.id)}">編集 ›</button>
+      </div>
+      <div class="row-thumbs">${thumbsHtml}</div>
+    </div>`;
   }).join("");
-  wrap.innerHTML = cards;
-  wrap.querySelectorAll(".project-card").forEach((el) => {
-    el.addEventListener("click", () => openProjectModal(el.dataset.id));
+
+  // サムネ非同期読み込み(GitHub内のみ)
+  wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
+    fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
+      if (url) img.src = url;
+    });
+  });
+  // 行クリックで編集(URL/ボタンのクリックは除外)
+  wrap.querySelectorAll(".gallery-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("a") || e.target.closest("button")) return;
+      openProjectModal(row.dataset.id);
+    });
+  });
+  wrap.querySelectorAll(".row-open-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openProjectModal(btn.dataset.id);
+    });
   });
 }
 
@@ -1107,50 +1152,76 @@ function deleteCurrentProject() {
   renderProjects();
 }
 
-// v3.45.1: Markdownでエクスポート(本文+ライバルURL+メモ+画像URL、コピペしやすい形式)
+// v3.45.1: Markdownでエクスポート(常に全項目「画像→ライバルURL→メモ→本文」の順)
 function exportCurrentProjectAsMarkdown() {
   const pr = projects.find((x) => x.id === activeProjectId);
   if (!pr) return;
   // フォーカス中入力欄をflushしてから最新値を取得
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+
+  // v3.45.5: 順序=画像→ライバルURL→メモ→本文、常に全項目を出力(空なら「(なし)」)
   const lines = [];
   lines.push(`# ${pr.name || "(無題)"}`);
   lines.push("");
-  if (pr.body && pr.body.trim()) {
-    lines.push("## 本文");
-    lines.push("");
-    lines.push(pr.body);
-    lines.push("");
+  lines.push(`_エクスポート日時: ${new Date().toLocaleString("ja-JP")}_`);
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+
+  // 画像
+  lines.push("## 画像");
+  lines.push("");
+  const imgs = Array.isArray(pr.images) ? pr.images : [];
+  if (imgs.length) {
+    for (const it of imgs) {
+      if (typeof it === "object" && it && it.isExternal === true) {
+        // 外部URLはMarkdown画像記法で挿入(そのままプレビュー可)
+        lines.push(`![](${it.url})`);
+        lines.push("");
+      } else {
+        // 内部画像(GitHubのimages/内)はパスだけ記録
+        lines.push(`- (内部画像) ${it}`);
+      }
+    }
+  } else {
+    lines.push("_(画像なし)_");
   }
+  lines.push("");
+
+  // ライバルURL
+  lines.push("## ライバルURL");
+  lines.push("");
   const urls = Array.isArray(pr.urls) ? pr.urls.filter((u) => (u.url || "").trim()) : [];
   if (urls.length) {
-    lines.push("## ライバルURL");
-    lines.push("");
     for (const u of urls) {
       const label = (u.label || "").trim();
       lines.push(label ? `- [${label}](${u.url})` : `- ${u.url}`);
     }
-    lines.push("");
+  } else {
+    lines.push("_(URLなし)_");
   }
+  lines.push("");
+
+  // メモ
+  lines.push("## メモ(価格・商品構成など)");
+  lines.push("");
   if (pr.notes && pr.notes.trim()) {
-    lines.push("## メモ(価格・商品構成など)");
-    lines.push("");
     lines.push(pr.notes);
-    lines.push("");
+  } else {
+    lines.push("_(メモなし)_");
   }
-  const imgs = Array.isArray(pr.images) ? pr.images : [];
-  if (imgs.length) {
-    lines.push("## 画像");
-    lines.push("");
-    for (const it of imgs) {
-      if (typeof it === "object" && it && it.isExternal === true) {
-        lines.push(`- ${it.url}`);
-      } else {
-        lines.push(`- (内部画像) ${it}`);
-      }
-    }
-    lines.push("");
+  lines.push("");
+
+  // 本文
+  lines.push("## 本文");
+  lines.push("");
+  if (pr.body && pr.body.trim()) {
+    lines.push(pr.body);
+  } else {
+    lines.push("_(本文なし)_");
   }
+  lines.push("");
+
   const md = lines.join("\n");
   const filename = `${safeFileName(pr.name || "project")}.md`;
   const blob = new Blob(["\uFEFF" + md], { type: "text/markdown;charset=utf-8" });
@@ -1162,6 +1233,13 @@ function exportCurrentProjectAsMarkdown() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // ボタンにフィードバック
+  const btn = $("btn-project-export");
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = "✓ エクスポート済み";
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }
 }
 
 // ==============================================
