@@ -3555,8 +3555,209 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 
 /* ============================================== */
-/* v3.45.0: プロジェクト機能 */
+/* v3.46.0: 商品編集画面のプロジェクトモード */
 /* ============================================== */
+
+/* モード切替タブ(アクションバー左端) */
+.editor-mode-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.editor-mode-tab {
+  padding: 8px 18px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--card);
+  color: var(--ink-soft);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.editor-mode-tab + .editor-mode-tab {
+  border-left: 1px solid var(--line);
+}
+.editor-mode-tab:hover:not(.active) {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+.editor-mode-tab.active {
+  background: var(--ink);
+  color: #fff;
+}
+.editor-action-bar-spacer {
+  flex: 1;
+}
+
+/* プロジェクトモードビュー */
+.editor-project-view {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.editor-project-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.editor-project-left,
+.editor-project-right {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.editor-project-left .project-body-input {
+  min-height: calc(100vh - 240px);
+  margin-top: 6px;
+}
+
+/* 既存のproject-* CSSを流用(モーダル無いので参考のみ) */
+.project-urls-section { min-width: 0; }
+.project-urls-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+.project-urls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.project-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.project-url-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.project-url-item .product-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.project-url-item .product-url-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+.product-url-open,
+.product-url-remove {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.product-url-open:hover {
+  border-color: #1565c0;
+  color: #1565c0;
+  background: #e3f0fa;
+}
+.product-url-remove {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.product-url-remove:hover {
+  border-color: #c2185b;
+  color: #c2185b;
+  background: #fde2eb;
+}
+
+.project-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.project-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.project-section-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.project-body-input,
+.project-notes-input,
+.project-review-input {
+  font-family: var(--mono);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.7;
+}
+.project-body-input {
+  font-size: 13px;
+  min-height: 400px;
+  resize: none;
+  flex: 1;
+}
+.project-notes-input {
+  font-size: 12.5px;
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.project-review-input {
+  font-size: 12px;
+  min-height: 150px;
+  resize: vertical;
+  line-height: 1.6;
+  padding: 10px 12px;
+  transition: all 0.15s;
+}
+.project-body-input:focus,
+.project-notes-input:focus,
+.project-review-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+.project-review-input.project-review-drag {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  border-style: dashed;
+  border-width: 2px;
+}
 
 /* プロジェクト一覧グリッド */
 #projects-view {
