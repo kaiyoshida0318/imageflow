@@ -52,6 +52,10 @@
         {
           "label": "",
           "url": ""
+        },
+        {
+          "label": "",
+          "url": ""
         }
       ],
       "reviewUrls": [
@@ -141,7 +145,19 @@
           "imagesFinalChecked": []
         }
       ],
-      "createdAt": "2026-08-05T09:25:51.419Z"
+      "createdAt": "2026-08-05T09:25:51.419Z",
+      "urls": [
+        {
+          "label": "",
+          "url": ""
+        }
+      ],
+      "reviewUrls": [
+        {
+          "label": "",
+          "url": ""
+        }
+      ]
     },
     {
       "id": "msd0ucemea434b",
