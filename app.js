@@ -894,16 +894,18 @@ function renderProjects() {
       : `<div class="project-row-notes project-row-empty">メモなし</div>`;
     return `
     <div class="gallery-row project-row" data-id="${escapeHtml(pr.id)}">
-      <div class="row-info">
+      <div class="row-info project-row-info">
         <div class="row-start-date">プロジェクト</div>
         <div class="row-name">${escapeHtml(pr.name || "(無題)")}</div>
+        <button class="row-open-btn" data-id="${escapeHtml(pr.id)}">編集 ›</button>
+      </div>
+      <div class="row-thumbs">${thumbsHtml}</div>
+      <div class="project-row-meta">
         <div class="project-row-meta-label">ライバルURL</div>
         ${urlsHtml}
         <div class="project-row-meta-label">メモ</div>
         ${notesHtml}
-        <button class="row-open-btn" data-id="${escapeHtml(pr.id)}">編集 ›</button>
       </div>
-      <div class="row-thumbs">${thumbsHtml}</div>
     </div>`;
   }).join("");
 
