@@ -12,7 +12,7 @@
           "isInitial": true,
           "title": "初期分析",
           "textsTop": [
-            ""
+            "OK じゃあ、レビュー分析から進めていこう"
           ],
           "textsBottom": [
             ""
@@ -23,7 +23,8 @@
           "filesFinal": [],
           "analysisTexts": [
             ""
-          ]
+          ],
+          "imagesFinalChecked": []
         },
         {
           "iid": "msgy5zbdsqlgrx",
