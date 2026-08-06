@@ -3764,19 +3764,81 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink-mute);
 }
 
-/* v3.45.4: 画像エリア - 左=画像サムネイル、右=URL入力/アップロード */
+/* v3.45.4/v3.45.7: 画像エリア - 2×2グリッド */
+/* 左上: サムネ / 右上: URL入力 / 左下: アップロード(小) / 右下: レビューテキスト */
 .project-image-area {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) 1.4fr;
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: minmax(120px, 0.8fr) 1.6fr;
+  grid-template-rows: auto auto;
+  gap: 10px;
+  align-items: stretch;
   min-width: 0;
 }
+.project-images {
+  grid-column: 1;
+  grid-row: 1;
+  align-content: start;
+}
 .project-image-inputs {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+}
+#project-image-dropzone.project-dropzone-compact {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 60px;
+  padding: 8px 10px;
+  gap: 3px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+#project-image-dropzone.project-dropzone-compact .sec-dropzone-icon {
+  font-size: 18px;
+}
+#project-image-dropzone.project-dropzone-compact .sec-dropzone-text {
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+/* v3.45.7: レビューテキスト */
+.project-review-wrap {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.project-review-label {
+  margin: 0;
+}
+.project-review-input {
+  min-height: 100px;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+  line-height: 1.6;
+  transition: all 0.15s;
+}
+.project-review-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+/* ドラッグホバー中 */
+.project-review-input.project-review-drag {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  border-style: dashed;
+  border-width: 2px;
 }
 
 /* v3.45.1: 画像URL入力行 */
@@ -3879,6 +3941,22 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+}
+/* v3.45.8: ライバルURL/レビューURLを左右2カラム */
+.project-urls-section {
+  min-width: 0;
+}
+.project-urls-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+.project-urls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 .project-url-item {
