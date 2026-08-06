@@ -27,21 +27,6 @@
           "imagesFinalChecked": []
         },
         {
-          "iid": "msgy5zbdsqlgrx",
-          "key": "free-msgy5zbd255hu6",
-          "textsTop": [
-            ""
-          ],
-          "textsBottom": [
-            ""
-          ],
-          "images": [],
-          "files": [],
-          "imagesFinal": [],
-          "filesFinal": [],
-          "imagesFinalChecked": []
-        },
-        {
           "iid": "msgyc85i557c55",
           "key": "initial-msgyc85i557c55",
           "isInitial": true,
@@ -59,6 +44,21 @@
           "analysisTexts": [
             ""
           ],
+          "imagesFinalChecked": []
+        },
+        {
+          "iid": "msgy5zbdsqlgrx",
+          "key": "free-msgy5zbd255hu6",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
           "imagesFinalChecked": []
         }
       ],
