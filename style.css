@@ -3618,7 +3618,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .project-modal-inner {
   max-width: 1400px;
   width: 96vw;
-  max-height: 90vh;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
 }
@@ -3650,6 +3650,16 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   align-items: center;
   flex-shrink: 0;
 }
+/* v3.45.1: 保存(閉じる)ボタンは強調表示 */
+.project-modal-head-actions .tag-mgr-btn.primary {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.project-modal-head-actions .tag-mgr-btn.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 .project-modal-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3663,8 +3673,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 .project-modal-right {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   min-width: 0;
+}
+.project-modal-right {
+  /* 右カラムは本文だけ */
+  display: flex;
 }
 .project-section-label {
   font-family: var(--mono);
@@ -3685,8 +3699,27 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink);
   resize: none;
   line-height: 1.7;
+  margin-top: 6px;
 }
 .project-body-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+/* v3.45.1: メモ欄(価格・商品構成用、高さ変更可) */
+.project-notes-input {
+  min-height: 120px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+  line-height: 1.6;
+}
+.project-notes-input:focus {
   border-color: var(--accent);
   outline: none;
   background: #fff;
@@ -3706,9 +3739,32 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   font-size: 10.5px;
   color: var(--ink-mute);
 }
+
+/* v3.45.1: 画像URL入力行 */
+.project-image-add-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.project-image-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.project-image-url-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
 .project-images {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 8px;
 }
 .project-image-item {
@@ -3744,6 +3800,20 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   transition: background 0.15s;
 }
 .project-image-remove:hover { background: #c2185b; }
+/* v3.45.1: 外部URL画像バッジ */
+.project-image-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 9.5px;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
 .project-dropzone {
   border: 2px dashed var(--line);
   border-radius: 8px;
@@ -3757,7 +3827,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 6px;
   align-items: center;
   justify-content: center;
-  min-height: 100px;
+  min-height: 80px;
 }
 .project-dropzone:hover,
 .project-dropzone.sec-dropzone-drag {
@@ -3832,6 +3902,14 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   border-color: #c2185b;
   color: #c2185b;
   background: #fde2eb;
+}
+
+/* v3.45.1: モーダルフッター(削除ボタンを左下に) */
+.project-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* 2段目バー(テンプレタブ時) */
