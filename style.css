@@ -3616,7 +3616,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 
 /* プロジェクト編集モーダル */
 .project-modal-inner {
-  max-width: 1400px;
+  max-width: 1600px;
   width: 96vw;
   max-height: 92vh;
   display: flex;
@@ -3666,6 +3666,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   gap: 16px;
   padding: 16px 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
 }
@@ -3675,6 +3676,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  overflow: hidden;
 }
 .project-modal-right {
   /* 右カラムは本文だけ */
@@ -3740,11 +3742,27 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink-mute);
 }
 
+/* v3.45.4: 画像エリア - 左=画像サムネイル、右=URL入力/アップロード */
+.project-image-area {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 1.4fr;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+.project-image-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
 /* v3.45.1: 画像URL入力行 */
 .project-image-add-row {
   display: flex;
   gap: 6px;
   align-items: stretch;
+  min-width: 0;
 }
 .project-image-url-input {
   flex: 1;
@@ -3839,11 +3857,13 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 .project-url-item {
   display: flex;
   gap: 6px;
   align-items: center;
+  min-width: 0;
 }
 .project-url-label,
 .project-url-input {
@@ -3854,11 +3874,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   color: var(--ink);
   font-size: 12.5px;
   font-family: var(--sans);
+  min-width: 0;
 }
 .project-url-label {
-  width: 100px;
-  min-width: 100px;
-  flex-shrink: 0;
+  width: 80px;
+  min-width: 60px;
+  flex-shrink: 1;
 }
 .project-url-input {
   flex: 1;
