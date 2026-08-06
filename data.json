@@ -38,7 +38,28 @@
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
+        },
+        {
+          "iid": "msgyc85i557c55",
+          "key": "initial-msgyc85i557c55",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-06T03:19:20.329Z"
