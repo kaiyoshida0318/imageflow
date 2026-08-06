@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="style.css?v=3.44.10" />
+<link rel="stylesheet" href="style.css?v=3.45.0" />
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <img id="logo-link" class="logo-full" src="image-flow.png" alt="ImageFlow" style="cursor:pointer" title="ホーム(全て)に戻る" />
   </div>
   <div class="header-right">
-    <span class="version-badge">v3.44.10</span>
+    <span class="version-badge">v3.45.0</span>
     <div class="stat">
       <span class="stat-num" id="stat-count">0</span>
       <span class="stat-label">items</span>
@@ -63,12 +63,18 @@
 
 <!-- ============== ナビバー(2段) ============== -->
 <nav class="top-tab-bar">
-  <div class="top-tab" id="top-tab-main" data-tab="main">メイン</div>
+  <div class="top-tab" id="top-tab-projects" data-tab="projects">プロジェクト</div>
+  <div class="top-tab" id="top-tab-main" data-tab="main">商品</div>
   <div class="top-tab" id="top-tab-xmind" data-tab="xmind">工程表</div>
   <div class="top-tab" id="top-tab-templates" data-tab="templates">テンプレ</div>
 </nav>
 <nav class="view-bar">
-  <!-- 1段目で「メイン」選択時: タグフィルタ -->
+  <!-- 1段目で「プロジェクト」選択時: 追加ボタン -->
+  <div id="projects-bar" class="templates-bar" style="display:none">
+    <span class="templates-bar-label">プロジェクト一覧:</span>
+    <button id="btn-add-project" class="btn-tab-add" title="新しいプロジェクトを追加">+</button>
+  </div>
+  <!-- 1段目で「商品」選択時: タグフィルタ -->
   <div id="tag-filter-list" class="tag-filter-list" style="display:none"></div>
   <!-- 1段目で「工程表」選択時: 工程表タブ + 追加ボタン -->
   <div id="view-list" class="view-list" style="display:none"></div>
@@ -117,6 +123,11 @@
   <div id="templates-view" style="display:none">
     <div id="templates-list" class="templates-list"></div>
   </div>
+
+  <!-- プロジェクト表示エリア(カード一覧) -->
+  <div id="projects-view" style="display:none">
+    <div id="projects-grid" class="projects-grid"></div>
+  </div>
 </main>
 
 <!-- ============== 追加モーダル(商品登録) ============== -->
@@ -154,7 +165,7 @@
 <!-- ============== 商品 編集ページ ============== -->
 <div id="detail-modal" class="modal" style="display:none">
   <div class="modal-inner editor">
-    <!-- v3.44.10: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
+    <!-- v3.45.0: パネル上部に固定するボタン帯(保存 / 保存して閉じる / 保存せず閉じる)。スクロールしない -->
     <div id="editor-action-bar" class="editor-action-bar">
       <button id="btn-save-only" class="editor-act-btn editor-act-save" title="保存だけして編集を続ける">保存</button>
       <button id="btn-save-close" class="editor-act-btn editor-act-save-close" title="保存して閉じる">保存<span class="act-x">×</span></button>
@@ -256,6 +267,47 @@
   </div>
 </div>
 
+<!-- ============== プロジェクト編集モーダル ============== -->
+<div id="project-modal" class="modal" style="display:none">
+  <div class="modal-inner project-modal-inner">
+    <div class="modal-head">
+      <input id="project-name" type="text" class="project-name-input" placeholder="プロジェクト名" />
+      <div class="project-modal-head-actions">
+        <button id="btn-project-save" class="tag-mgr-btn" title="現在の内容を保存">💾 保存</button>
+        <button id="btn-project-delete" class="tag-mgr-btn danger" title="このプロジェクトを削除">× 削除</button>
+        <button id="project-modal-close" class="modal-close" title="閉じる">×</button>
+      </div>
+    </div>
+    <div class="project-modal-body">
+      <div class="project-modal-left">
+        <label class="project-section-label">本文</label>
+        <textarea id="project-body" class="project-body-input" placeholder="本文を入力(複数行OK、改行保持)"></textarea>
+      </div>
+      <div class="project-modal-right">
+        <div class="project-section">
+          <div class="project-section-head">
+            <label class="project-section-label">画像</label>
+            <span class="project-section-hint">クリックまたはドラッグ&ドロップで追加</span>
+          </div>
+          <div id="project-images" class="project-images"></div>
+          <div id="project-image-dropzone" class="project-dropzone" title="クリックまたはドラッグ&ドロップで画像を追加">
+            <span class="sec-dropzone-icon">⇪</span>
+            <span class="sec-dropzone-text">画像を追加</span>
+          </div>
+          <input id="project-image-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div class="project-section">
+          <div class="project-section-head">
+            <label class="project-section-label">URL</label>
+            <button id="btn-project-add-url" class="tag-mgr-btn" title="URL入力欄を追加">＋ URL追加</button>
+          </div>
+          <div id="project-urls" class="project-urls"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============== 容量確認モーダル ============== -->
 <div id="storage-modal" class="modal" style="display:none">
   <div class="modal-inner storage-inner">
@@ -277,6 +329,6 @@
 </div>
 
 
-<script src="app.js?v=3.44.10"></script>
+<script src="app.js?v=3.45.0"></script>
 </body>
 </html>
