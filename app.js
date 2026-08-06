@@ -961,6 +961,7 @@ function openProjectModal(id) {
   $("project-name").value = pr.name || "";
   $("project-body").value = pr.body || "";  // 改行保持のため .value 代入
   $("project-notes").value = pr.notes || ""; // v3.45.1: メモ欄
+  $("project-review").value = pr.reviewText || ""; // v3.45.7: レビューテキスト
   $("project-image-url-input").value = "";
   renderProjectImages(pr);
   renderProjectUrls(pr);
@@ -1034,68 +1035,80 @@ function addProjectImageUrl() {
   saveProjects();
 }
 
-// URL一覧を描画
-function renderProjectUrls(pr) {
-  const wrap = $("project-urls");
-  const urls = Array.isArray(pr.urls) ? pr.urls : [];
+// v3.45.8: URL関数群を汎用化(ライバルURL / レビューURL 両対応)
+// key: "urls"(ライバル) or "reviewUrls"(レビュー)
+// wrapId: DOM要素ID
+function projectUrlWrapId(key) { return key === "reviewUrls" ? "project-review-urls" : "project-urls"; }
+
+function renderProjectUrlsFor(pr, key) {
+  const wrap = $(projectUrlWrapId(key));
+  if (!wrap) return;
+  const urls = Array.isArray(pr[key]) ? pr[key] : [];
   if (urls.length === 0) {
-    // 初期は1個空欄を出す
-    pr.urls = [{ label: "", url: "" }];
+    pr[key] = [{ label: "", url: "" }]; // 初期空欄1個
   }
-  wrap.innerHTML = (pr.urls || []).map((u, i) => `
-    <div class="project-url-item" data-idx="${i}">
-      <input type="text" class="project-url-label" data-idx="${i}" value="${escapeHtml(u.label || "")}" placeholder="ラベル(任意)" />
-      <input type="url" class="project-url-input" data-idx="${i}" value="${escapeHtml(u.url || "")}" placeholder="https://…" />
-      <button class="project-url-open" data-idx="${i}" title="このURLを新しいタブで開く">開く</button>
-      <button class="project-url-remove" data-idx="${i}" title="このURLを削除">×</button>
+  wrap.innerHTML = (pr[key] || []).map((u, i) => `
+    <div class="project-url-item" data-idx="${i}" data-key="${escapeHtml(key)}">
+      <input type="text" class="project-url-label" data-idx="${i}" data-key="${escapeHtml(key)}" value="${escapeHtml(u.label || "")}" placeholder="ラベル(任意)" />
+      <input type="url" class="project-url-input" data-idx="${i}" data-key="${escapeHtml(key)}" value="${escapeHtml(u.url || "")}" placeholder="https://…" />
+      <button class="project-url-open" data-idx="${i}" data-key="${escapeHtml(key)}" title="このURLを新しいタブで開く">開く</button>
+      <button class="project-url-remove" data-idx="${i}" data-key="${escapeHtml(key)}" title="このURLを削除">×</button>
     </div>
   `).join("");
   wrap.querySelectorAll(".project-url-label").forEach((inp) => {
-    inp.addEventListener("blur", () => commitProjectUrl(parseInt(inp.dataset.idx), "label", inp.value));
+    inp.addEventListener("blur", () => commitProjectUrl(inp.dataset.key, parseInt(inp.dataset.idx), "label", inp.value));
   });
   wrap.querySelectorAll(".project-url-input").forEach((inp) => {
-    inp.addEventListener("blur", () => commitProjectUrl(parseInt(inp.dataset.idx), "url", inp.value));
+    inp.addEventListener("blur", () => commitProjectUrl(inp.dataset.key, parseInt(inp.dataset.idx), "url", inp.value));
   });
   wrap.querySelectorAll(".project-url-open").forEach((btn) => {
     btn.addEventListener("click", () => {
       const pr2 = projects.find((x) => x.id === activeProjectId);
       if (!pr2) return;
-      const u = pr2.urls[parseInt(btn.dataset.idx)];
+      const k = btn.dataset.key;
+      const u = (pr2[k] || [])[parseInt(btn.dataset.idx)];
       if (!u || !u.url) { alert("URLが空です"); return; }
       window.open(u.url, "_blank", "noopener");
     });
   });
   wrap.querySelectorAll(".project-url-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeProjectUrl(parseInt(btn.dataset.idx)));
+    btn.addEventListener("click", () => removeProjectUrl(btn.dataset.key, parseInt(btn.dataset.idx)));
   });
 }
 
-function commitProjectUrl(idx, field, value) {
+// 両方描画(モーダル開閉時に使う)
+function renderProjectUrls(pr) {
+  renderProjectUrlsFor(pr, "urls");
+  renderProjectUrlsFor(pr, "reviewUrls");
+}
+
+function commitProjectUrl(key, idx, field, value) {
   const pr = projects.find((x) => x.id === activeProjectId);
   if (!pr) return;
-  if (!Array.isArray(pr.urls)) pr.urls = [];
-  if (!pr.urls[idx]) pr.urls[idx] = { label: "", url: "" };
-  if (pr.urls[idx][field] === value) return;
-  pr.urls[idx][field] = value;
+  if (!Array.isArray(pr[key])) pr[key] = [];
+  if (!pr[key][idx]) pr[key][idx] = { label: "", url: "" };
+  if (pr[key][idx][field] === value) return;
+  pr[key][idx][field] = value;
   saveProjects();
 }
 
-function addProjectUrl() {
+function addProjectUrl(key) {
+  key = key || "urls";
   const pr = projects.find((x) => x.id === activeProjectId);
   if (!pr) return;
-  if (!Array.isArray(pr.urls)) pr.urls = [];
-  pr.urls.push({ label: "", url: "" });
-  renderProjectUrls(pr);
+  if (!Array.isArray(pr[key])) pr[key] = [];
+  pr[key].push({ label: "", url: "" });
+  renderProjectUrlsFor(pr, key);
   saveProjects();
 }
 
-function removeProjectUrl(idx) {
+function removeProjectUrl(key, idx) {
   const pr = projects.find((x) => x.id === activeProjectId);
   if (!pr) return;
-  if (!Array.isArray(pr.urls) || pr.urls.length === 0) return;
-  pr.urls.splice(idx, 1);
-  if (pr.urls.length === 0) pr.urls = [{ label: "", url: "" }];
-  renderProjectUrls(pr);
+  if (!Array.isArray(pr[key]) || pr[key].length === 0) return;
+  pr[key].splice(idx, 1);
+  if (pr[key].length === 0) pr[key] = [{ label: "", url: "" }];
+  renderProjectUrlsFor(pr, key);
   saveProjects();
 }
 
@@ -1199,6 +1212,30 @@ function exportCurrentProjectAsMarkdown() {
     }
   } else {
     lines.push("_(URLなし)_");
+  }
+  lines.push("");
+
+  // v3.45.8: レビューURL(ライバルURLの後)
+  lines.push("## レビューURL");
+  lines.push("");
+  const rurls = Array.isArray(pr.reviewUrls) ? pr.reviewUrls.filter((u) => (u.url || "").trim()) : [];
+  if (rurls.length) {
+    for (const u of rurls) {
+      const label = (u.label || "").trim();
+      lines.push(label ? `- [${label}](${u.url})` : `- ${u.url}`);
+    }
+  } else {
+    lines.push("_(レビューURLなし)_");
+  }
+  lines.push("");
+
+  // v3.45.7: レビューテキスト(URLの後、メモの前)
+  lines.push("## レビューテキスト");
+  lines.push("");
+  if (pr.reviewText && pr.reviewText.trim()) {
+    lines.push(pr.reviewText);
+  } else {
+    lines.push("_(レビューテキストなし)_");
   }
   lines.push("");
 
@@ -4805,7 +4842,9 @@ function bindEvents() {
   // v3.45.1: エクスポート(Markdown)
   $("btn-project-export").addEventListener("click", exportCurrentProjectAsMarkdown);
   $("btn-project-delete").addEventListener("click", deleteCurrentProject);
-  $("btn-project-add-url").addEventListener("click", addProjectUrl);
+  $("btn-project-add-url").addEventListener("click", () => addProjectUrl("urls"));
+  // v3.45.8: レビューURLの追加ボタン
+  $("btn-project-add-review-url").addEventListener("click", () => addProjectUrl("reviewUrls"));
   // v3.45.1: 画像URLから追加
   $("btn-project-image-url-add").addEventListener("click", addProjectImageUrl);
   $("project-image-url-input").addEventListener("keydown", (e) => {
@@ -4819,6 +4858,55 @@ function bindEvents() {
     if (pr.notes === v) return;
     pr.notes = v;
     saveProjects();
+  });
+  // v3.45.7: レビューテキスト blur → 保存(改行保持)
+  $("project-review").addEventListener("blur", () => {
+    const pr = projects.find((x) => x.id === activeProjectId);
+    if (!pr) return;
+    const v = $("project-review").value;
+    if (pr.reviewText === v) return;
+    pr.reviewText = v;
+    saveProjects();
+  });
+  // v3.45.7: レビューテキストへのドラッグ&ドロップ(選択テキスト or .txtファイル)
+  const revEl = $("project-review");
+  revEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    revEl.classList.add("project-review-drag");
+  });
+  revEl.addEventListener("dragleave", (e) => {
+    e.stopPropagation();
+    revEl.classList.remove("project-review-drag");
+  });
+  revEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    revEl.classList.remove("project-review-drag");
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    // .txtファイル(text/*)なら中身を読み込んで追記
+    if (dt.files && dt.files.length) {
+      const files = Array.from(dt.files).filter((f) =>
+        f.type.startsWith("text/") || /\.(txt|md|csv|log)$/i.test(f.name)
+      );
+      if (files.length) {
+        Promise.all(files.map((f) => f.text())).then((texts) => {
+          const joined = texts.join("\n\n");
+          const cur = revEl.value;
+          revEl.value = cur ? (cur.replace(/\s+$/, "") + "\n\n" + joined) : joined;
+          revEl.dispatchEvent(new Event("blur"));
+        }).catch((err) => alert("ファイル読み込みに失敗: " + err.message));
+        return;
+      }
+    }
+    // ドラッグしてきたテキスト
+    const txt = dt.getData("text/plain") || dt.getData("text");
+    if (txt) {
+      const cur = revEl.value;
+      revEl.value = cur ? (cur.replace(/\s+$/, "") + "\n\n" + txt) : txt;
+      revEl.dispatchEvent(new Event("blur"));
+    }
   });
   // プロジェクト名 blur → 保存
   $("project-name").addEventListener("blur", () => {
