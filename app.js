@@ -1049,15 +1049,11 @@ function renderProjectUrlsFor(pr, key) {
   }
   wrap.innerHTML = (pr[key] || []).map((u, i) => `
     <div class="project-url-item" data-idx="${i}" data-key="${escapeHtml(key)}">
-      <input type="text" class="project-url-label" data-idx="${i}" data-key="${escapeHtml(key)}" value="${escapeHtml(u.label || "")}" placeholder="ラベル(任意)" />
       <input type="url" class="project-url-input" data-idx="${i}" data-key="${escapeHtml(key)}" value="${escapeHtml(u.url || "")}" placeholder="https://…" />
       <button class="project-url-open" data-idx="${i}" data-key="${escapeHtml(key)}" title="このURLを新しいタブで開く">開く</button>
       <button class="project-url-remove" data-idx="${i}" data-key="${escapeHtml(key)}" title="このURLを削除">×</button>
     </div>
   `).join("");
-  wrap.querySelectorAll(".project-url-label").forEach((inp) => {
-    inp.addEventListener("blur", () => commitProjectUrl(inp.dataset.key, parseInt(inp.dataset.idx), "label", inp.value));
-  });
   wrap.querySelectorAll(".project-url-input").forEach((inp) => {
     inp.addEventListener("blur", () => commitProjectUrl(inp.dataset.key, parseInt(inp.dataset.idx), "url", inp.value));
   });
