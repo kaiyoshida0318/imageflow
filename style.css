@@ -3563,7 +3563,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   padding: 0;
 }
 .projects-grid {
-  max-width: 1500px;
+  max-width: 1700px;
   margin: 0 auto;
   padding: 8px 24px 24px;
 }
@@ -3573,10 +3573,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-direction: column;
   gap: 10px;
 }
-/* v3.45.11: プロジェクト行を3列レイアウト(商品名 | 画像 | ライバルURL/メモ) */
+/* v3.45.11/v3.45.12: プロジェクト行を3列レイアウト(商品名 | 画像 | メタ(3分割)) */
 .project-row {
   display: grid;
-  grid-template-columns: 200px 1fr 320px;
+  grid-template-columns: 180px minmax(240px, 1fr) minmax(520px, 1.6fr);
   gap: 16px;
   align-items: stretch;
 }
@@ -3589,13 +3589,23 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   min-width: 0;
   flex: none;
 }
+/* v3.45.12: 右メタは内側でさらに3カラム(ライバル | レビュー | メモ) */
 .project-row-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  gap: 12px;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.project-row-meta-col {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding-left: 12px;
-  border-left: 1px solid var(--line);
+}
+.project-row-meta-col-notes {
+  min-width: 0;
 }
 .project-row .project-row-meta-label {
   font-family: var(--mono);
