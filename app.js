@@ -70,9 +70,11 @@ let sectionDefs = [];   // 全商品共通の項目定義 [{key, label}]
 let tagGroups = [];     // タグの定義(編集可能): [{id, name, tags:[{name, color}]}]
 let mindmaps = [];      // マインドマップ [{id, name, root}]
 let templates = [];     // テンプレ [{id, title, body, bodyFull}]
+let projects = [];      // プロジェクト [{id, name, body, images:[], urls:[], createdAt}]
 let activeTemplateId = null; // 選択中のテンプレID
+let activeProjectId = null;  // 編集中のプロジェクトID(モーダル)
 let activeViewId = "_main"; // "_main" or mindmap.id
-let activeTopTab = "main"; // "main" or "xmind" or "templates"
+let activeTopTab = "main"; // "projects" or "main"(=商品) or "xmind" or "templates"
 let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
 let selectedNodeId = null; // 編集中の選択ノード
 let mmDirty = false;       // マインドマップに未保存の変更があるか
@@ -173,6 +175,7 @@ async function loadData() {
     products = [];
     mindmaps = [];
     templates = [];
+    projects = [];
     dataSha = null;
     if (tagGroups.length === 0) tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     return;
@@ -186,6 +189,7 @@ async function loadData() {
     tagGroups = Array.isArray(json.tagGroups) ? json.tagGroups : [];
     mindmaps = Array.isArray(json.mindmaps) ? json.mindmaps : [];
     templates = Array.isArray(json.templates) ? json.templates : [];
+    projects = Array.isArray(json.projects) ? json.projects : [];
     // 項目定義が無ければデフォルトで初期化
     if (sectionDefs.length === 0) {
       sectionDefs = DEFAULT_SECTIONS.map((s) => ({ key: s.key, label: s.label }));
@@ -203,6 +207,7 @@ async function loadData() {
     tagGroups = JSON.parse(JSON.stringify(DEFAULT_TAG_GROUPS));
     mindmaps = [];
     templates = [];
+    projects = [];
   }
 }
 
@@ -277,7 +282,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const body = {
       message: commitMessage,
-      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps, templates }, null, 2)),
+      content: b64encode(JSON.stringify({ products, sectionDefs, tagGroups, mindmaps, templates, projects }, null, 2)),
       branch: auth.branch
     };
     if (dataSha) body.sha = dataSha;
@@ -304,6 +309,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
       const mine = products.slice();
       const myMindmaps = mindmaps.slice();
       const myTemplates = templates.slice();
+      const myProjects = projects.slice();
       await loadData();
       if (mergeFn) {
         products = mergeFn(products);
@@ -317,6 +323,7 @@ async function _saveDataImpl(commitMessage, mergeFn) {
       // マインドマップ・テンプレはローカル変更を優先
       mindmaps = myMindmaps;
       templates = myTemplates;
+      projects = myProjects;
       continue;
     }
 
@@ -476,6 +483,19 @@ function render() {
   // 1段目タブ + 2段目バー描画
   renderTopTabBar();
 
+  // プロジェクトモード
+  if (activeTopTab === "projects") {
+    gallery.style.display = "none";
+    $("empty-state").style.display = "none";
+    $("gallery-pager").style.display = "none";
+    $("mindmap-view").style.display = "none";
+    $("templates-view").style.display = "none";
+    $("projects-view").style.display = "block";
+    renderProjects();
+    return;
+  }
+  $("projects-view").style.display = "none";
+
   // テンプレモード
   if (activeTopTab === "templates") {
     gallery.style.display = "none";
@@ -524,21 +544,24 @@ function render() {
 
 // 1段目タブと、その下の2段目バーを描画
 function renderTopTabBar() {
-  // 1段目: メイン / 工程表 / テンプレ のトグル
+  // 1段目: プロジェクト / 商品(main) / 工程表(xmind) / テンプレ のトグル
+  $("top-tab-projects").classList.toggle("active", activeTopTab === "projects");
   $("top-tab-main").classList.toggle("active", activeTopTab === "main");
   $("top-tab-xmind").classList.toggle("active", activeTopTab === "xmind");
   $("top-tab-templates").classList.toggle("active", activeTopTab === "templates");
   // 2段目: 1段目の選択によって表示切替
+  const showProjects = activeTopTab === "projects";
   const showMain = activeTopTab === "main";
   const showXmind = activeTopTab === "xmind";
   const showTemplates = activeTopTab === "templates";
+  $("projects-bar").style.display = showProjects ? "" : "none";
   $("tag-filter-list").style.display = showMain ? "" : "none";
   $("view-list").style.display = showXmind ? "" : "none";
   $("btn-add-mindmap").style.display = showXmind ? "" : "none";
   $("templates-bar").style.display = showTemplates ? "" : "none";
   if (showMain) renderTagFilterBar();
   else if (showXmind) renderViewBar();
-  // テンプレバーは静的なのでrender不要
+  // プロジェクトバー・テンプレバーは静的なのでrender不要
 }
 
 // メインタブ下のタグフィルタバー(「全て」の右側にグループ別タグを横並びで配置)
@@ -827,6 +850,232 @@ function saveTemplates() {
     .catch((err) => alert("テンプレの保存に失敗: " + err.message));
 }
 
+
+// ==============================================
+// プロジェクト機能 (v3.45.0)
+// ==============================================
+
+// プロジェクト一覧をカード形式で描画
+function renderProjects() {
+  const wrap = $("projects-grid");
+  if (!wrap) return;
+  if (!Array.isArray(projects) || projects.length === 0) {
+    wrap.innerHTML = '<div class="state-msg" style="padding:48px;text-align:center;grid-column:1/-1"><div class="empty-illust">📁</div><p>プロジェクトがまだありません。<br>上の <b>+</b> から追加しましょう。</p></div>';
+    return;
+  }
+  const cards = projects.map((pr) => {
+    const bodyPreview = (pr.body || "").replace(/\s+/g, " ").slice(0, 100);
+    const imgCount = Array.isArray(pr.images) ? pr.images.length : 0;
+    const urlCount = Array.isArray(pr.urls) ? pr.urls.filter((u) => (u.url || "").trim()).length : 0;
+    return `
+      <div class="project-card" data-id="${escapeHtml(pr.id)}">
+        <div class="project-card-name">${escapeHtml(pr.name || "(無題)")}</div>
+        <div class="project-card-preview">${escapeHtml(bodyPreview) || '<span style="color:var(--ink-mute);font-style:italic">(本文なし)</span>'}</div>
+        <div class="project-card-meta">
+          <span>🖼 ${imgCount}枚</span>
+          <span>🔗 ${urlCount}件</span>
+        </div>
+      </div>`;
+  }).join("");
+  wrap.innerHTML = cards;
+  wrap.querySelectorAll(".project-card").forEach((el) => {
+    el.addEventListener("click", () => openProjectModal(el.dataset.id));
+  });
+}
+
+// 新規プロジェクトを追加(即モーダルを開く)
+function addProject() {
+  const name = prompt("新しいプロジェクトの名前を入力", "新しいプロジェクト");
+  if (!name || !name.trim()) return;
+  const newPr = {
+    id: "prj-" + genId(),
+    name: name.trim(),
+    body: "",
+    images: [],
+    urls: [],
+    createdAt: new Date().toISOString()
+  };
+  projects.push(newPr);
+  saveProjects();
+  renderProjects();
+  openProjectModal(newPr.id);
+}
+
+// プロジェクトデータの保存(楽観的)
+function saveProjects() {
+  const localProducts = products.slice();
+  saveData("Update projects", () => localProducts)
+    .catch((err) => alert("プロジェクトの保存に失敗: " + err.message));
+}
+
+// プロジェクト編集モーダルを開く
+function openProjectModal(id) {
+  const pr = projects.find((x) => x.id === id);
+  if (!pr) return;
+  activeProjectId = id;
+  $("project-name").value = pr.name || "";
+  $("project-body").value = pr.body || "";  // 改行保持のため .value 代入
+  renderProjectImages(pr);
+  renderProjectUrls(pr);
+  $("project-modal").style.display = "flex";
+}
+
+// プロジェクトモーダルを閉じる(内容は既にblur/saveで保存済み)
+function closeProjectModal() {
+  // 開いてる最中の入力をflush
+  if (document.activeElement && document.activeElement.blur) {
+    document.activeElement.blur();
+  }
+  $("project-modal").style.display = "none";
+  activeProjectId = null;
+  renderProjects();
+}
+
+// 画像一覧を描画
+function renderProjectImages(pr) {
+  const wrap = $("project-images");
+  const imgs = Array.isArray(pr.images) ? pr.images : [];
+  if (imgs.length === 0) {
+    wrap.innerHTML = "";
+    return;
+  }
+  wrap.innerHTML = imgs.map((path, i) => `
+    <div class="project-image-item" data-idx="${i}">
+      <img data-load-path="${escapeHtml(path)}" alt="" />
+      <button class="project-image-remove" data-idx="${i}" title="この画像を削除">×</button>
+    </div>
+  `).join("");
+  // 画像を非同期ロード
+  wrap.querySelectorAll("img[data-load-path]").forEach((img) => {
+    fetchAsBlobUrl(img.dataset.loadPath, true).then((url) => {
+      if (url) img.src = url;
+    });
+  });
+  wrap.querySelectorAll(".project-image-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeProjectImage(parseInt(btn.dataset.idx));
+    });
+  });
+}
+
+// URL一覧を描画
+function renderProjectUrls(pr) {
+  const wrap = $("project-urls");
+  const urls = Array.isArray(pr.urls) ? pr.urls : [];
+  if (urls.length === 0) {
+    // 初期は1個空欄を出す
+    pr.urls = [{ label: "", url: "" }];
+  }
+  wrap.innerHTML = (pr.urls || []).map((u, i) => `
+    <div class="project-url-item" data-idx="${i}">
+      <input type="text" class="project-url-label" data-idx="${i}" value="${escapeHtml(u.label || "")}" placeholder="ラベル(任意)" />
+      <input type="url" class="project-url-input" data-idx="${i}" value="${escapeHtml(u.url || "")}" placeholder="https://…" />
+      <button class="project-url-open" data-idx="${i}" title="このURLを新しいタブで開く">開く</button>
+      <button class="project-url-remove" data-idx="${i}" title="このURLを削除">×</button>
+    </div>
+  `).join("");
+  wrap.querySelectorAll(".project-url-label").forEach((inp) => {
+    inp.addEventListener("blur", () => commitProjectUrl(parseInt(inp.dataset.idx), "label", inp.value));
+  });
+  wrap.querySelectorAll(".project-url-input").forEach((inp) => {
+    inp.addEventListener("blur", () => commitProjectUrl(parseInt(inp.dataset.idx), "url", inp.value));
+  });
+  wrap.querySelectorAll(".project-url-open").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pr2 = projects.find((x) => x.id === activeProjectId);
+      if (!pr2) return;
+      const u = pr2.urls[parseInt(btn.dataset.idx)];
+      if (!u || !u.url) { alert("URLが空です"); return; }
+      window.open(u.url, "_blank", "noopener");
+    });
+  });
+  wrap.querySelectorAll(".project-url-remove").forEach((btn) => {
+    btn.addEventListener("click", () => removeProjectUrl(parseInt(btn.dataset.idx)));
+  });
+}
+
+function commitProjectUrl(idx, field, value) {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  if (!Array.isArray(pr.urls)) pr.urls = [];
+  if (!pr.urls[idx]) pr.urls[idx] = { label: "", url: "" };
+  if (pr.urls[idx][field] === value) return;
+  pr.urls[idx][field] = value;
+  saveProjects();
+}
+
+function addProjectUrl() {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  if (!Array.isArray(pr.urls)) pr.urls = [];
+  pr.urls.push({ label: "", url: "" });
+  renderProjectUrls(pr);
+  saveProjects();
+}
+
+function removeProjectUrl(idx) {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  if (!Array.isArray(pr.urls) || pr.urls.length === 0) return;
+  pr.urls.splice(idx, 1);
+  if (pr.urls.length === 0) pr.urls = [{ label: "", url: "" }];
+  renderProjectUrls(pr);
+  saveProjects();
+}
+
+// 画像追加(FileList/DataTransferItemList)
+async function addProjectImages(fileList) {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  const files = Array.from(fileList).filter((f) => f && f.type && f.type.startsWith("image/"));
+  if (files.length === 0) return;
+  if (!Array.isArray(pr.images)) pr.images = [];
+  setHeadStatus(`画像アップロード中 (0/${files.length})…`);
+  let i = 0;
+  for (const f of files) {
+    i++;
+    setHeadStatus(`画像アップロード中 (${i}/${files.length})…`);
+    try {
+      const buf = await f.arrayBuffer();
+      const base64 = arrayBufferToBase64(buf);
+      const ext = (f.name.split(".").pop() || "png").toLowerCase();
+      const path = `${IMAGES_DIR}/project-${pr.id}-${Date.now()}-${i}.${ext}`;
+      await uploadFile(path, base64, `Add project image: ${pr.name}`);
+      pr.images.push(path);
+    } catch (err) {
+      setHeadStatus("✗ " + err.message, "err");
+      return;
+    }
+  }
+  renderProjectImages(pr);
+  await saveData(`Update project images: ${pr.name}`);
+  setHeadStatus("✓ 追加しました", "ok");
+  setTimeout(() => setHeadStatus(""), 1200);
+}
+
+async function removeProjectImage(idx) {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  if (!Array.isArray(pr.images)) return;
+  if (!confirm("この画像を削除しますか?")) return;
+  pr.images.splice(idx, 1);
+  renderProjectImages(pr);
+  saveProjects();
+}
+
+// プロジェクト削除
+function deleteCurrentProject() {
+  const pr = projects.find((x) => x.id === activeProjectId);
+  if (!pr) return;
+  const name = pr.name || "(無題)";
+  if (!confirm(`プロジェクト「${name}」を削除しますか?\n\n※画像ファイル自体は削除されず、プロジェクトの参照だけ消えます。`)) return;
+  projects = projects.filter((x) => x.id !== activeProjectId);
+  activeProjectId = null;
+  $("project-modal").style.display = "none";
+  saveProjects();
+  renderProjects();
+}
 
 // ==============================================
 // マインドマップ機能 (Prompt Galleryから移植)
@@ -4289,6 +4538,11 @@ function bindEvents() {
       e.preventDefault();
       closeTextFullscreen();
     }
+    // v3.45.0: ESCでプロジェクトモーダルも閉じる
+    if (e.key === "Escape" && $("project-modal").style.display === "flex") {
+      e.preventDefault();
+      closeProjectModal();
+    }
   });
 
   window.addEventListener("dragover", (e) => e.preventDefault());
@@ -4331,6 +4585,83 @@ function bindEvents() {
     activeViewId = "_main";
     selectedNodeId = null;
     render();
+  });
+  // v3.45.0: プロジェクトタブ
+  $("top-tab-projects").addEventListener("click", () => {
+    if (activeTopTab === "projects") return;
+    if (activeViewId !== "_main" && !confirmDiscardMmChanges()) return;
+    activeTopTab = "projects";
+    activeViewId = "_main";
+    selectedNodeId = null;
+    render();
+  });
+  $("btn-add-project").addEventListener("click", addProject);
+  // プロジェクトモーダル操作
+  $("project-modal-close").addEventListener("click", closeProjectModal);
+  $("project-modal").addEventListener("click", (e) => {
+    if (e.target === $("project-modal")) closeProjectModal();
+  });
+  $("btn-project-save").addEventListener("click", () => {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const btn = $("btn-project-save");
+    const orig = btn.textContent;
+    btn.textContent = "保存中…";
+    btn.disabled = true;
+    saveData("Save project (manual)", () => products.slice())
+      .then(() => {
+        btn.textContent = "✓ 保存済み";
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
+      })
+      .catch((err) => {
+        btn.textContent = orig;
+        btn.disabled = false;
+        alert("保存失敗: " + err.message);
+      });
+  });
+  $("btn-project-delete").addEventListener("click", deleteCurrentProject);
+  $("btn-project-add-url").addEventListener("click", addProjectUrl);
+  // プロジェクト名 blur → 保存
+  $("project-name").addEventListener("blur", () => {
+    const pr = projects.find((x) => x.id === activeProjectId);
+    if (!pr) return;
+    const v = $("project-name").value;
+    if (pr.name === v) return;
+    pr.name = v;
+    saveProjects();
+  });
+  $("project-name").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  // プロジェクト本文 blur → 保存(改行保持)
+  $("project-body").addEventListener("blur", () => {
+    const pr = projects.find((x) => x.id === activeProjectId);
+    if (!pr) return;
+    const v = $("project-body").value;
+    if (pr.body === v) return;
+    pr.body = v;
+    saveProjects();
+  });
+  // 画像ドロップゾーンとファイル入力
+  $("project-image-dropzone").addEventListener("click", () => {
+    $("project-image-input").click();
+  });
+  $("project-image-input").addEventListener("change", (e) => {
+    if (e.target.files && e.target.files.length) {
+      addProjectImages(e.target.files);
+      e.target.value = "";
+    }
+  });
+  $("project-image-dropzone").addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.add("sec-dropzone-drag");
+  });
+  $("project-image-dropzone").addEventListener("dragleave", (e) => {
+    e.currentTarget.classList.remove("sec-dropzone-drag");
+  });
+  $("project-image-dropzone").addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove("sec-dropzone-drag");
+    if (e.dataTransfer && e.dataTransfer.files) {
+      addProjectImages(e.dataTransfer.files);
+    }
   });
   $("top-tab-xmind").addEventListener("click", () => {
     if (activeTopTab === "xmind") return;
