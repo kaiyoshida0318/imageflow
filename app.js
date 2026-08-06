@@ -74,7 +74,7 @@ let projects = [];      // プロジェクト [{id, name, body, images:[], urls:
 let activeTemplateId = null; // 選択中のテンプレID
 let activeProjectId = null;  // 編集中のプロジェクトID(モーダル)
 let activeViewId = "_main"; // "_main" or mindmap.id
-let activeTopTab = "main"; // "projects" or "main"(=商品) or "xmind" or "templates"
+let activeTopTab = "projects"; // 起動時の初期表示は「プロジェクト」タブ
 let activeTagFilter = "_all"; // "_all" or タグ名 (メインタブの2段目フィルタ)
 let selectedNodeId = null; // 編集中の選択ノード
 let mmDirty = false;       // マインドマップに未保存の変更があるか
