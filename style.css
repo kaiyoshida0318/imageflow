@@ -3573,6 +3573,30 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-direction: column;
   gap: 10px;
 }
+/* v3.45.11: プロジェクト行を3列レイアウト(商品名 | 画像 | ライバルURL/メモ) */
+.project-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 320px;
+  gap: 16px;
+  align-items: stretch;
+}
+.project-row .row-info.project-row-info {
+  min-width: 0;
+  flex: none;
+  width: auto;
+}
+.project-row .row-thumbs {
+  min-width: 0;
+  flex: none;
+}
+.project-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
 .project-row .project-row-meta-label {
   font-family: var(--mono);
   font-size: 10px;
@@ -3691,6 +3715,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   overflow-x: hidden;
   flex: 1;
   min-height: 0;
+  /* v3.45.10: 上端揃えで、各カラムは自然な高さに伸びる */
+  align-items: start;
 }
 .project-modal-left,
 .project-modal-right {
@@ -3698,7 +3724,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   flex-direction: column;
   gap: 14px;
   min-width: 0;
-  overflow: hidden;
+  /* v3.45.10: overflow:hidden を外して縦方向に伸ばせるように */
 }
 .project-modal-right {
   /* 右カラムは本文だけ */
@@ -3713,7 +3739,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .project-body-input {
   flex: 1;
-  min-height: 500px;
+  min-height: 400px;
   font-family: var(--mono);
   font-size: 13px;
   padding: 12px 14px;
@@ -3767,7 +3793,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 /* v3.45.9: 画像エリア - 上段(サムネ | URL+アップ縦積み) + 下段全幅(レビューテキスト) */
 .project-image-area {
   display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) 1.6fr;
+  grid-template-columns: minmax(80px, 0.6fr) 1.8fr;
   grid-template-rows: auto auto;
   gap: 10px;
   align-items: stretch;
@@ -3863,8 +3889,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
 }
 .project-images {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px;
 }
 .project-image-item {
   position: relative;
