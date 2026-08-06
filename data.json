@@ -41,7 +41,28 @@
           "images": [],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
+        },
+        {
+          "iid": "msgtz4uy3gryw1",
+          "key": "initial-msgtz4uy3gryw1",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-05T09:25:51.419Z"
