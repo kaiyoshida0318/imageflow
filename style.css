@@ -3554,6 +3554,286 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-h
   cursor: not-allowed;
 }
 
+/* ============================================== */
+/* v3.45.0: プロジェクト機能 */
+/* ============================================== */
+
+/* プロジェクト一覧グリッド */
+#projects-view {
+  padding: 0;
+}
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 8px 24px 24px;
+}
+.project-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+.project-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+  transform: translateY(-1px);
+}
+.project-card-name {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-card-preview {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.project-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+}
+
+/* プロジェクト編集モーダル */
+.project-modal-inner {
+  max-width: 1400px;
+  width: 96vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+#project-modal .modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.project-name-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+}
+.project-name-input:hover { background: var(--bg-2); }
+.project-name-input:focus { background: #fff; border-color: var(--accent); outline: none; }
+.project-modal-head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.project-modal-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.project-modal-left,
+.project-modal-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.project-section-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.project-body-input {
+  flex: 1;
+  min-height: 500px;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  resize: none;
+  line-height: 1.7;
+}
+.project-body-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+.project-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.project-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.project-section-hint {
+  font-size: 10.5px;
+  color: var(--ink-mute);
+}
+.project-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.project-image-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.project-image-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.project-image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.project-image-remove:hover { background: #c2185b; }
+.project-dropzone {
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+}
+.project-dropzone:hover,
+.project-dropzone.sec-dropzone-drag {
+  border-color: var(--accent);
+  background: var(--bg-2);
+  color: var(--accent);
+}
+.project-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.project-url-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.project-url-label,
+.project-url-input {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-family: var(--sans);
+}
+.project-url-label {
+  width: 100px;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+.project-url-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.project-url-label:focus,
+.project-url-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: #fff;
+}
+.project-url-open,
+.project-url-remove {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.project-url-open:hover {
+  border-color: #1565c0;
+  color: #1565c0;
+  background: #e3f0fa;
+}
+.project-url-remove {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.project-url-remove:hover {
+  border-color: #c2185b;
+  color: #c2185b;
+  background: #fde2eb;
+}
+
 /* 2段目バー(テンプレタブ時) */
 .templates-bar {
   display: flex;
