@@ -101,6 +101,26 @@
             "750x1230",
             "750x1230"
           ]
+        },
+        {
+          "iid": "msr7m13iglqb1l",
+          "key": "initial-msr7m13iglqb1l",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-13T07:05:49.694Z",
