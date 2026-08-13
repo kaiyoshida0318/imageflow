@@ -42,6 +42,26 @@
           "files": [],
           "imagesFinal": [],
           "filesFinal": []
+        },
+        {
+          "iid": "msr6y9srozzepu",
+          "key": "initial-msr6y9srozzepu",
+          "isInitial": true,
+          "title": "初期分析",
+          "textsTop": [
+            ""
+          ],
+          "textsBottom": [
+            ""
+          ],
+          "images": [],
+          "files": [],
+          "imagesFinal": [],
+          "filesFinal": [],
+          "analysisTexts": [
+            ""
+          ],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-13T07:05:49.694Z",
