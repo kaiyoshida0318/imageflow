@@ -17,13 +17,16 @@
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/msr6c677u2m6ha-msr6c7lqskla0j-material-1786604793215-rivalrev.svg"
+          ],
           "files": [],
           "imagesFinal": [],
           "filesFinal": [],
           "analysisTexts": [
             ""
-          ]
+          ],
+          "imagesFinalChecked": []
         },
         {
           "iid": "msr6c7lqmf1tl5",
@@ -40,7 +43,19 @@
           "filesFinal": []
         }
       ],
-      "createdAt": "2026-08-13T07:05:49.694Z"
+      "createdAt": "2026-08-13T07:05:49.694Z",
+      "urls": [
+        {
+          "label": "",
+          "url": ""
+        }
+      ],
+      "reviewUrls": [
+        {
+          "label": "",
+          "url": ""
+        }
+      ]
     },
     {
       "id": "msgy5y3qyaxcrm",
