@@ -55,15 +55,18 @@
           "iid": "msr6c7lqmf1tl5",
           "key": "free-msr6c7lqt9e1hd",
           "textsTop": [
-            ""
+            "指示書作って"
           ],
           "textsBottom": [
             ""
           ],
-          "images": [],
+          "images": [
+            "images/msr6c677u2m6ha-msr6c7lqmf1tl5-material-1786605906821-usefinal.svg"
+          ],
           "files": [],
           "imagesFinal": [],
-          "filesFinal": []
+          "filesFinal": [],
+          "imagesFinalChecked": []
         }
       ],
       "createdAt": "2026-08-13T07:05:49.694Z",
